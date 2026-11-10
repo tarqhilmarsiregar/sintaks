@@ -82,3 +82,4 @@ export async function authenticateStudent(nim: string, password: string): Promis
 
   return { success: false, error: 'Kredensial tidak valid. Silakan gunakan NIM dan Password NIM (default).' };
 }
+

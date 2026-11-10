@@ -17,38 +17,45 @@ export default function HomePage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="text-center max-w-3xl mx-auto space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-mono font-medium shadow-inner">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-medium shadow-inner">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-              <span>Official Campus Competitive Programming Arena</span>
+              <span>STMIK TIME — CP ARENA (Gamified Micro-Learning)</span>
             </div>
 
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight">
-              Arena Asah Algoritma & Struktur Data{' '}
+              Klub Akademik Programming{' '}
               <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-indigo-300 bg-clip-text text-transparent">
-                Mahasiswa
+                STMIK TIME
               </span>
             </h1>
 
             <p className="text-base sm:text-lg text-slate-300 leading-relaxed">
-              Platform kompetisi pemrograman berstandar <strong>ACM-ICPC</strong>. Selesaikan soal
-              komputasional kompleks, raih balon penalti terendah, dan ukur peringkat Anda di antara
-              rekan mahasiswa secara real-time.
+              Platform Gamifikasi Pembelajaran Competitive Programming & Problem Solving
+              dibina oleh <strong className="text-white">Tarq Hilmar Siregar, S.Kom</strong>.
+              Menampilkan sistem Leveling, Tier Badge, One-Shot Lock Anti-AI, Dual Timer, dan Ekspor Excel Resmi.
             </p>
 
             {/* Quick Action Buttons */}
             <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+              <a
+                href="/arena.html"
+                className="flex items-center gap-2 px-7 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-sm shadow-xl shadow-cyan-500/30 transition-all hover:scale-105"
+              >
+                <span>🎮 Buka STMIK TIME CP Arena (Gamifikasi)</span>
+                <ArrowRight className="w-4 h-4" />
+              </a>
+
               <Link
                 href="/login"
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-xl shadow-blue-500/30 transition-all hover:scale-105"
+                className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-arena-card hover:bg-slate-800 text-slate-200 font-semibold text-sm border border-arena-border transition-colors"
               >
                 <Terminal className="w-4 h-4" />
-                <span>Masuk Menggunakan NIM</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Masuk dengan NIM</span>
               </Link>
 
               <Link
                 href={`/contests/${activeContest.slug}`}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-arena-card hover:bg-slate-800 text-slate-200 font-semibold text-sm border border-arena-border transition-colors"
+                className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-arena-card hover:bg-slate-800 text-slate-200 font-semibold text-sm border border-arena-border transition-colors"
               >
                 <Trophy className="w-4 h-4 text-amber-400" />
                 <span>Buka Kontes Aktif</span>
@@ -315,3 +322,4 @@ export default function HomePage() {
     </div>
   );
 }
+

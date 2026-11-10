@@ -70,3 +70,4 @@ export default function VerdictBadge({ verdict, showIcon = true, className = '' 
     </span>
   );
 }
+
