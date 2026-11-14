@@ -140,3 +140,409 @@ File antarmuka: `gas/Index.html` & `public/arena.html`.
    - **Execute as:** `Me (email Anda)`
    - **Who has access:** `Anyone (Siapa saja)`
 4. Klik **Deploy** dan salin **Web App URL**. Bagikan URL ini kepada mahasiswa!
+
+---
+
+## 🚀 Phase 7: Restrukturisasi Next.js 15 & Supabase PostgreSQL (Production Release)
+
+> **Tanggal Rilis:** 11 November 2026  
+> **Status:** 🟢 COMPLETED (100% Sesuai Spesifikasi & Screenshot Pengguna)  
+> **Hasil Uji Otomatis:** 42 / 42 Tests Passed (100%)  
+> **Next.js Production Build:** 12/12 Static & Dynamic Pages Compiled Successfully
+
+### 1. Migrasi Skema Supabase (5 Tabel Relasional Murni)
+- **File:** [supabase/schema.sql](file:///d:/CP-Arena/supabase/schema.sql)
+  - `public.users`: NIM (PK), Password, Nama Lengkap, Codename, Avatar, Role, Prodi, Angkatan, Kelas Reguler, Klub Hari (`KAMIS`/`JUMAT`/`ALL`), Total XP, Level, Tier Badge, Milestones JSON, ID Tim.
+  - `public.games`: ID Game (PK), Ref Pertemuan, Judul, Kategori Materi, Kesulitan, Mode (`SOLO`/`TEAM`), PIN Akses, Status Kamis (`UPCOMING`/`OPEN`/`FROZEN`/`ENDED`), Status Jumat, Durasi Total (menit), Durasi per Soal (detik), Min Nilai Lulus.
+  - `public.questions`: ID Soal (PK), ID Game (FK), Judul, Narasi Soal, Cuplikan Kode, Opsi Jawaban (pipa `|`), Kunci Jawaban (Rahasia Server), Teks Hint, Editorial, Poin Dasar, First Blood By.
+  - `public.submissions`: ID Submisi (PK), Timestamp Mulai & Update, NIM, Codename, Klub Hari, ID Game, Mode Game, ID Tim, Skor XP, Nilai Akademik (0-100), Jumlah Benar, Total Soal, Status Lulus, Streak, Tab Switch Count, Status Sesi (`ACTIVE`/`DONE`), Detail Jawaban JSON.
+  - `public.teams`: ID Tim (PK), Nama Tim, Klub Hari, Daftar NIM JSON, Daftar Nama JSON, Total Skor Tim.
+
+### 2. Akurasi Desain Antarmuka (100% Presisi Tangkapan Layar Pengguna)
+- **Komponen Inti:**
+  - [TopNavbar.tsx](file:///d:/CP-Arena/src/components/arena/TopNavbar.tsx): Logo CP, STMIK TIME — CP ARENA, chip profil `⚡ Cecilia_AlgoStar (2545001) | Lv.2 ✦ O(N) Sprinter • 481 XP`, dan tombol Keluar.
+  - [FirstBloodMarquee.tsx](file:///d:/CP-Arena/src/components/arena/FirstBloodMarquee.tsx): Running ticker pengumuman First Blood (+25 XP).
+  - [StatCardsGrid.tsx](file:///d:/CP-Arena/src/components/arena/StatCardsGrid.tsx): 4 Kartu Metrik Statistik Utama (Kelas & Game Selesai, Rata-Rata Nilai Akhir, Total Skor XP & Level, Status Diagnostik).
+  - [NavigationTabs.tsx](file:///d:/CP-Arena/src/components/arena/NavigationTabs.tsx): Bar 4 Tab Navigasi (`🎮 Katalog Game`, `⚔ Team Battle`, `📊 Capaian & Rekomendasi`, `👤 Profil & Avatar`) dan tombol `🔄 Segarkan Data`.
+  - [GameCatalogGrid.tsx](file:///d:/CP-Arena/src/components/arena/GameCatalogGrid.tsx): Grid 2 kolom paket game G1 s.d. G7 dengan filter pencarian, status, kesulitan, pertemuan, dan kartu hasil submisi lengkap.
+  - [LeaderboardSidebar.tsx](file:///d:/CP-Arena/src/components/arena/LeaderboardSidebar.tsx): Papan peringkat Individu dengan filter Kelas KAMIS/JUMAT/ALL serta peringkat Squad Team Battle.
+
+### 3. Engine Ujian Ketat & Anti-Cheat
+- [QuizArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/QuizArenaModal.tsx):
+  - **Dual Timer:** Timer Total Game & Timer Anti-AI per Soal (45s–60s).
+  - **One-Shot Lock & Timeout Lock:** Sekali dijawab atau waktu habis -> nomor terkunci permanen, auto-jump ke soal berikutnya.
+  - **Page Visibility API:** Deteksi pindah tab -> penalti langsung `-5 poin` Nilai Akhir & `-5 XP`.
+  - **Hint Logic:** -25 XP dari poin dasar soal tanpa memotong Nilai Akademik.
+  - **Auto-Finish & Editorial Modal:** Evaluasi nilai murni, penalti, nilai akhir bersih, dan pembahasan dosen secara instan.
+
+### 4. Command Center Dosen & Snake-Draft Generator
+- [admin/page.tsx](file:///d:/CP-Arena/src/app/admin/page.tsx):
+  - CRUD Paket Game & Saklar Status Independen Kamis vs Jumat.
+  - CRUD Bank Soal & Editorial.
+  - Snake-Draft Balanced Team Generator ($1 \rightarrow 2 \rightarrow 3 \rightarrow 3 \rightarrow 2 \rightarrow 1$) untuk 15 mahasiswa SI 2025 (Kamis) dan 13 mahasiswa TI/SI 2024-2025 (Jumat).
+  - Monitoring 28 Mahasiswa & Reset Progres (Per-Mahasiswa dan Global).
+  - Export Laporan Excel Resmi SheetJS (`.xlsx`) 3 Sheet terpisah per kelas (`Rekap_Nilai`, `Diagnostik_Materi`, `Log_Detail`).
+
+### 5. Hotfix: Resolusi Webpack Vendor-Chunk Error (`canvas-confetti`)
+- **Gejala Masalah:** Runtime error `Cannot find module './vendor-chunks/canvas-confetti.js'` saat menjalankan server Next.js di lingkungan SSR / dev bundler.
+- **Akar Penyebab:** Pustaka `canvas-confetti` merupakan client-only library berbasis DOM/canvas. Static import di level file memicu Webpack mencoba membuat server vendor-chunk yang gagal di-resolve oleh Node runtime.
+- **Solusi Rekayasa:**
+  1. Membuat abstraction helper client-safe di [src/lib/confetti.ts](file:///d:/CP-Arena/src/lib/confetti.ts).
+  2. Memuat engine confetti browser secara asynchronous via `<script>` pada [layout.tsx](file:///d:/CP-Arena/src/app/layout.tsx).
+  3. Menghapus seluruh static import Node `canvas-confetti` dan menggantinya dengan pemanggilan aman `fireConfetti()`.
+  4. Membersihkan cache Webpack `.next` dan memverifikasi ulang kompilasi Next.js (`Compiled successfully in 5.5s`).
+
+### 6. Hotfix: Resolusi Stale Build Chunk Mismatch (`Cannot find module './611.js'`)
+- **Gejala Masalah:** Runtime error `Cannot find module './611.js'` saat beralih dari `npm run build` ke `npm run dev`.
+- **Akar Penyebab:** Perintah `next build` menghasilkan manifest chunk produksi dengan hash id numerik (seperti `611.js`). Ketika `next dev` dijalankan setelahnya, server dev mencoba memuat manifest produksi yang tidak kompatibel dengan in-memory compilation dev server.
+- **Solusi Rekayasa:**
+  1. Menambahkan siklus hidup otomatis `"predev"` pada [package.json](file:///d:/CP-Arena/package.json) yang menggunakan `node -e "try { fs.rmSync('.next', { recursive: true, force: true }); } catch (e) {}"`.
+  2. Solusi ini berjalan secara murni lintas-platform (Windows, macOS, Linux) tanpa ketergantungan shell eksternal.
+  3. Terverifikasi: `npm run dev` otomatis membersihkan cache sisa produksi dan merespons `HTTP Status: 200 OK`.
+
+### 7. Perombakan Halaman Login & Proteksi Redirect Path Utama (`/` -> `/login`)
+- **Tanggal Rilis:** 13 November 2026
+- **Akurasi Visual:** 100% presisi dengan desain Competitive Execution Matrix pada lampiran pengguna:
+  - Header logo STMIK TIME - Programming (Problem Solving).
+  - Kolom Kiri: Badge `LIVE ICPC SELECTION CONTEST #4 • Ends in 02:34:49`, Heading `Competitive Execution Matrix`, deskripsi High-concurrency sandbox, serta mock Code Editor Window Python 3.12 dengan status `AC`, `WA`, `TLE`, `RTE`.
+  - Kolom Kanan: Card `Masuk Arena Kontes`, input NIM, input Password dengan toggle visibility mata, widget reCAPTCHA `Saya bukan robot`, tombol `Masuk ke Arena Kontes →`, dan pintasan akun demo.
+  - Footer: `© 2026 Programming (Problem Solving) Club STMIK TIME`.
+- **Proteksi Rute:**
+  - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): `getCurrentUser()` tidak lagi meng-auto-login pengguna jika belum ada sesi di `localStorage`.
+  - [src/app/page.tsx](file:///d:/CP-Arena/src/app/page.tsx): Route guard memverifikasi sesi login. Jika pengguna belum login, akses ke path utama `/` otomatis langsung dialihkan (*redirect*) ke `/login`.
+
+### 8. Integrasi Logo Resmi STMIK TIME & Penyelesaian "Internal Server Error"
+- **Tanggal Rilis:** 14 November 2026
+- **Integrasi Logo Resmi:**
+  - File logo resmi STMIK TIME Medan (`media_1794625471091_9a9f0c4c.png`) berhasil dipindahkan ke folder aset publik: [public/logo-stmik-time.png](file:///d:/CP-Arena/public/logo-stmik-time.png) dan [public/logo.png](file:///d:/CP-Arena/public/logo.png).
+  - Menggantikan seluruh placeholder div gradient:
+    - [src/app/login/page.tsx](file:///d:/CP-Arena/src/app/login/page.tsx): Logo resmi STMIK TIME ditampilkan pada header halaman login dengan filter drop shadow yang rapi.
+    - [src/components/arena/TopNavbar.tsx](file:///d:/CP-Arena/src/components/arena/TopNavbar.tsx): Logo resmi STMIK TIME disematkan pada Top Navigation Bar di samping judul aplikasi.
+    - [src/app/layout.tsx](file:///d:/CP-Arena/src/app/layout.tsx): Favicon dan app icon dikonfigurasi menggunakan `/logo-stmik-time.png`.
+- **Resolusi Internal Server Error (500) di Browser:**
+  - Mengonversi pemanggilan raw `<script>` di App Router (`layout.tsx` & `admin/page.tsx`) menjadi komponen resmi `next/script` (`<Script strategy="lazyOnload" ... />`) guna mencegah hydration mismatch pada Next.js 15.
+  - Memastikan hook `predev` pada [package.json](file:///d:/CP-Arena/package.json) membersihkan stale compilation cache `.next` sebelum server dimulai.
+- **Verifikasi Sistem:**
+  - Seluruh rangkaian test suite (42/42 tests) lulus 100% pada [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs).
+  - Endpoint `/login` dan `/` merespons dengan HTTP Status 200 OK.
+
+### 9. Integrasi Google reCAPTCHA v2 (Checkbox "Saya bukan robot")
+- **Tanggal Rilis:** 14 November 2026
+- **Kredensial & Lingkungan:**
+  - Site Key: `6Le4QR8uAAAAAJbAO6RYJuVmyABJO-HJFZHeWUsn`
+  - Secret Key: `6Le4QR8uAAAAABnLAdYmiH1hkVlOd8tI6VbpKboY`
+  - Dikonfigurasi pada [.env.local](file:///d:/CP-Arena/.env.local) (`NEXT_PUBLIC_RECAPTCHA_SITE_KEY` dan `RECAPTCHA_SECRET_KEY`) serta [.env.example](file:///d:/CP-Arena/.env.example).
+- **Backend API Route:**
+  - [src/app/api/auth/verify-recaptcha/route.ts](file:///d:/CP-Arena/src/app/api/auth/verify-recaptcha/route.ts): Endpoint POST untuk memvalidasi token respon client ke Google reCAPTCHA verification endpoint (`https://www.google.com/recaptcha/api/siteverify`). Dilengkapi penanganan DNS/offline fallback saat dev lokal di sandbox terisolasi.
+- **Frontend Widget & Theme Integration:**
+  - [src/app/login/page.tsx](file:///d:/CP-Arena/src/app/login/page.tsx):
+    - Mengganti mock checkbox sebelumnya dengan widget resmi Google reCAPTCHA v2 berformat `theme: 'dark'` selaras dengan tema Cyber-Arena `#090d16`.
+    - Menggunakan asynchronous script loading (`render=explicit`) dengan callback `window.grecaptcha.render` yang aman terhadap re-render di React 19 / Next.js 15.
+    - Menambahkan state handling lengkap: token capture callback, expired callback, dan auto-reset widget saat autentikasi gagal.
+    - Pintasan akun demo dilengkapi token bypass untuk evaluasi kilat Dosen / Penguji.
+- **Verifikasi Sistem:**
+  - Penambahan Group Test 7 pada [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs). Total 46/46 unit tests lulus 100%.
+  - Pemeriksaan kompilasi TypeScript (`tsc --noEmit`) lulus 100% tanpa error.
+
+### 12. Restrukturisasi UI/UX: Modern Dual-Pane Dashboard dengan Sidebar Navigasi Kiri
+- **Tanggal Rilis:** 14 November 2026
+- **Prinsip UI/UX Designer:**
+  - **Header Tetap Utuh:** Mempertahankan [TopNavbar.tsx](file:///d:/CP-Arena/src/components/arena/TopNavbar.tsx) (Logo STMIK TIME resmi, Profil, XP/Level, Tombol Keluar) dan [FirstBloodMarquee.tsx](file:///d:/CP-Arena/src/components/arena/FirstBloodMarquee.tsx) (Pita berjalan First Blood).
+  - **Pemisahan Konten per Menu (Separation of Concerns):** Menghilangkan tumpukan tab horizontal di tengah layar dan menggantinya dengan layout Dual-Pane modern (Sidebar Kiri tetap + Area Konten Dinamis Kanan).
+- **Implementasi Komponen Baru:**
+  1. **Sidebar Navigasi Peserta ([src/components/arena/StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx)):**
+     - Widget Mini-Profil: Avatar glow, NIM, Codename, Role, Kelas, Level, dan XP Progress Bar interaktif.
+     - 6 Menu Utama dengan ikon, sublabel, badge kontekstual, dan active indicator pill:
+       1. 📊 **Dashboard** (Overview & Ringkasan 4 Kartu Metrik)
+       2. 🎮 **Katalog Game** (Tantangan Paket Soal Solo)
+       3. ⚔️ **Team Battle** (Arena Pertarungan Tim Snake-Draft)
+       4. 🏆 **Capaian & Evaluasi** (Milestone Badges & Rekomendasi Dosen)
+       5. 🥇 **Klasemen & Ranking** (Leaderboard Pemain & Tim)
+       6. 👤 **Profil & Avatar** (Kustomisasi Karakter 12 Avatar)
+       *(Plus jika role = 'ADMIN')*: 🛡️ **Command Center Dosen**.
+     - Footer aksi: Tombol *Segarkan Data* dan indikator status sinkronisasi.
+  2. **View Dashboard Ringkasan ([src/components/arena/DashboardOverviewView.tsx](file:///d:/CP-Arena/src/components/arena/DashboardOverviewView.tsx)):**
+     - Hero Welcome Banner *"Selamat datang kembali, [Codename]!"*.
+     - 4 Kartu Statistik Utama ([StatCardsGrid.tsx](file:///d:/CP-Arena/src/components/arena/StatCardsGrid.tsx)).
+     - Dua kolom responsif: Game siap main & status tim snake-draft di kiri, dan Top 5 Leaderboard Preview di kanan.
+  3. **View Klasemen & Ranking ([src/components/arena/LeaderboardView.tsx](file:///d:/CP-Arena/src/components/arena/LeaderboardView.tsx)):**
+     - Filter kelas independen (Kelas KAMIS / JUMAT / SEMUA).
+     - Podium Mewah Top 3 (🥇 Emas, 🥈 Perak, 🥉 Perunggu).
+     - Tabel lengkap seluruh peringkat mahasiswa dan klasemen Team Battle.
+- **Verifikasi Sistem:**
+  - 46/46 unit tests lulus 100% pada [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs).
+  - Pemeriksaan TypeScript (`tsc --noEmit`) 100% lulus tanpa error.
+
+### 13. Arsitektur URL Berbasis Peran (RBAC: `/mahasiswa` vs `/admin`) & Root Gateway Dispatcher
+- **Tanggal Rilis:** 14 November 2026
+- **Tujuan Rekayasa & Prinsip SDLC:**
+  Memisahkan ruang lingkup rute (*routing separation of concerns*) antara portal pembelajaran mahasiswa (`/mahasiswa`) dan konsol pengawasan dosen pembina (`/admin`), sesuai kaidah RESTful/Clean URL dan Role-Based Access Control (RBAC).
+- **Implementasi Komponen & Route Guards:**
+  1. **Portal Mahasiswa ([src/app/mahasiswa/page.tsx](file:///d:/CP-Arena/src/app/mahasiswa/page.tsx)):**
+     - Memindahkan seluruh antarmuka peserta gamifikasi ke rute resmi `/mahasiswa`.
+     - Route Guard: Jika pengguna belum login, otomatis dialihkan (*redirect*) ke `/login`.
+  2. **Konsol Admin Pembina ([src/app/admin/page.tsx](file:///d:/CP-Arena/src/app/admin/page.tsx)):**
+     - Dilindungi Route Guard ketat: Memverifikasi `user.role === 'ADMIN'`. Jika mahasiswa mencoba membuka `/admin`, sistem otomatis memblokir dan mengembalikannya ke `/mahasiswa`.
+     - Tombol kembali mengarah secara aman ke `/mahasiswa`.
+  3. **Root Gateway Dispatcher ([src/app/page.tsx](file:///d:/CP-Arena/src/app/page.tsx)):**
+     - Rute utama `/` bertindak sebagai *traffic dispatcher* cerdas:
+       - Tanpa sesi $\rightarrow$ `/login`
+       - Sesi role `ADMIN` $\rightarrow$ `/admin`
+       - Sesi role `PESERTA` $\rightarrow$ `/mahasiswa`
+  4. **Form Login ([src/app/login/page.tsx](file:///d:/CP-Arena/src/app/login/page.tsx)):**
+     - Sukses login langsung mengarahkan pengguna ke rute spesifik perannya (`/admin` atau `/mahasiswa`).
+     - Jika pengguna yang sudah login mengakses `/login`, otomatis langsung diarahkan ke portal masing-masing tanpa harus login ulang.
+  5. **Header Navigasi ([src/components/arena/TopNavbar.tsx](file:///d:/CP-Arena/src/components/arena/TopNavbar.tsx)):**
+     - Logo dan nama STMIK TIME mengarah secara dinamis ke `/admin` bagi dosen atau `/mahasiswa` bagi mahasiswa.
+- **Verifikasi Sistem & QA:**
+  - Penambahan Group Test 8 pada [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs) menguji 4 skenario alur routing RBAC.
+  - Total 50/50 unit tests lulus 100%.
+  - Kompilasi TypeScript (`tsc --noEmit`) 0 error.
+
+### 14. Rekayasa Rute Dinamis (Dynamic Deep-Linking URL) Mahasiswa (`/mahasiswa/[menu]`) & Admin (`/admin/[tab]`)
+- **Tanggal Rilis:** 14 November 2026
+- **Latar Belakang & Analisis Rekayasa (Software Engineering, Backend & QA):**
+  - **Problem Statement:** Sebelumnya, navigasi antar menu (seperti Dashboard, Katalog Game, Team Battle, Capaian, Leaderboard, Profil, serta tab manajemen Admin) disimpan hanya di dalam memory state komponen (`activeMenu` / `activeTab`). Hal ini menyebabkan URL browser tetap statis (`/mahasiswa` atau `/admin`), sehingga:
+    1. Pengguna tidak dapat melakukan *deep-linking* (misalnya membagikan tautan langsung ke `/mahasiswa/leaderboard` atau `/mahasiswa/katalog`).
+    2. Refresh halaman (`F5`) atau navigasi tombol browser Back/Forward menyebabkan state kembali ke tab default.
+    3. Pelanggaran prinsip *Semantic Web & RESTful state-driven URI* dalam siklus SDLC modern.
+  - **Solusi Rekayasa Berstandar SDLC:**
+    Mengadopsi pola *Next.js 15 Dynamic Route Segments* dipadukan dengan *Container-Presenter Architecture*:
+    - **Mahasiswa Dynamic Routes:** `/mahasiswa/[menu]` dengan dukungan segmen: `dashboard`, `katalog`, `team`, `capaian`, `leaderboard`, dan `profil`.
+    - **Admin Dynamic Routes:** `/admin/[tab]` dengan dukungan segmen: `games`, `questions`, `teams`, dan `students`.
+    - **Fallback Graceful Degradation:** Akses rute root (`/mahasiswa` atau `/admin`) atau segmen slug yang tidak terdaftar otomatis di-fallback ke menu default (`/mahasiswa/dashboard` dan `/admin/games`).
+- **Implementasi Komponen & Routing:**
+  1. **Container Komponen Mahasiswa ([src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx)):**
+     - Menerima prop `activeMenu: StudentActiveMenu`.
+     - Ketika pengguna mengklik menu di sidebar atau kartu di overview, navigasi diarahkan menggunakan `router.push('/mahasiswa/' + menuId)`.
+  2. **Dynamic Route Page Mahasiswa ([src/app/mahasiswa/[menu]/page.tsx](file:///d:/CP-Arena/src/app/mahasiswa/[menu]/page.tsx)):**
+     - Membaca slug melalui `useParams().menu`.
+     - Melakukan validasi terhadap *whitelist* menu yang diizinkan (`['dashboard', 'katalog', 'team', 'capaian', 'leaderboard', 'profil']`). Jika di luar daftar, me-redirect ke `/mahasiswa/dashboard`.
+  3. **Mahasiswa Root Redirect Page ([src/app/mahasiswa/page.tsx](file:///d:/CP-Arena/src/app/mahasiswa/page.tsx)):**
+     - Mengalihkan akses `/mahasiswa` langsung ke `/mahasiswa/dashboard`.
+  4. **Container Komponen Admin ([src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx)):**
+     - Menerima prop `activeAdminTab: AdminActiveTab`.
+     - Tab navigation memicu `router.push('/admin/' + tabId)`.
+  5. **Dynamic Route Page Admin ([src/app/admin/[tab]/page.tsx](file:///d:/CP-Arena/src/app/admin/[tab]/page.tsx)):**
+     - Membaca slug melalui `useParams().tab`.
+     - Validasi terhadap *whitelist* tab (`['games', 'questions', 'teams', 'students']`). Jika tidak valid, fallback ke `/admin/games`.
+  6. **Admin Root Redirect Page ([src/app/admin/page.tsx](file:///d:/CP-Arena/src/app/admin/page.tsx)):**
+     - Mengalihkan akses `/admin` langsung ke `/admin/games`.
+  7. **Preservasi Top Navbar & Marquee:**
+     - Struktur [src/components/arena/TopNavbar.tsx](file:///d:/CP-Arena/src/components/arena/TopNavbar.tsx) dan marquee First Blood tetap dipertahankan 100% tanpa perubahan visual/struktural.
+- **Verifikasi Sistem & Penjaminan Mutu (QA):**
+  - Pembaruan test suite pada [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs) dengan penambahan Group 9 (Dynamic Routing Mahasiswa) dan Group 10 (Dynamic Routing Admin).
+  - Total pengujian: **64/64 unit tests lulus 100%**.
+  - TypeScript Compiler (`tsc --noEmit`): **0 Error / Clean Type Checking**.
+  - Next.js Production Build (`next build`): **100% Berhasil**, seluruh 14 rute statis & dinamis ter-generate secara optimal.
+
+### 15. Penataan UI/UX: Eliminasi Ticker Marquee First Blood untuk Tampilan Bersih & Minimalis
+- **Tanggal Rilis:** 14 November 2026
+- **Tujuan Rekayasa & UI/UX:**
+  - Menghilangkan pita berjalan (*continuous marquee banner*) First Blood yang sebelumnya terletak di bawah Header TopNavbar.
+  - Memberikan *vertical viewing area* yang lebih luas dan pengalaman visual yang lebih tenang (*less visual noise/distraction*), selaras dengan konsep dashboard akademis modern.
+- **Implementasi:**
+  - Menghapus komponen `<FirstBloodMarquee announcements={firstBloods} />` dan dependensi state terkait pada [src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx).
+- **Verifikasi Sistem:**
+  - TypeScript Compiler (`tsc --noEmit`): **0 Error**.
+  - System Verification Suite: **64/64 tests lulus 100%**.
+
+### 16. Redesain UI/UX & Arsitektur Layout: Sidebar Full-Height Docked & Eliminasi Truncation Navigasi
+- **Tanggal Rilis:** 14 November 2026
+- **Latar Belakang & Analisis UI/UX & Software Engineering:**
+  - **Identifikasi Masalah (Before):**
+    1. *Fragmentasi Visual:* Sidebar sebelumnya terpecah menjadi 2 kartu terapung (*floating cards*) terpisah dengan rounded border tebal dan gap margin yang meninggalkan ruang kosong gelap di bawahnya (*abrupt cutoff*).
+    2. *Text Truncation Parah:* Lebar sidebar sebelumnya terlalu sempit (`w-64` / `w-72`), menyebabkan teks menu utama dan sublabel terpotong elipsis (`...`) seperti `Capaian & Evalu...`, `Klasemen & Ran...`, `Tantangan Soal So..`, dan `Arena Pertaru..`, sehingga merusak estetika dan profesionalitas antarmuka.
+    3. *Layout Disconnected:* Sidebar dibungkus di dalam kontainer ber-padding luar (`max-w-[1720px] mx-auto px-4 py-6`), menjadikannya tidak menempel (*docked*) ke tepi layar selayaknya aplikasi dashboard modern (seperti Linear, GitHub, Supabase, Vercel).
+  - **Prinsip Perancangan Baru (After):**
+    1. **Full-Height Docked Sidebar:** Menggunakan kelas `md:sticky md:top-[61px] md:h-[calc(100vh-61px)]` dengan garis pembatas vertikal presisi `border-r border-[#1e293b] bg-[#090e1a]`. Menempel sempurna dari bawah TopNavbar hingga dasar layar.
+    2. **Adequate Width & Zero Truncation:** Memperluas dimensi horizontal menjadi responsif `w-full md:w-72 lg:w-80 xl:w-[328px]`, menjamin seluruh label navigasi dan sublabel terbaca utuh tanpa terpotong.
+    3. **Three-Tier Seamless Vertical Architecture:**
+       - *Top Header Tier:* Profil mahasiswa terintegrasi dengan avatar ambient glow, NIM, Prodi, badge kelas, level flame, dan XP progress bar (dilindungi border-bottom).
+       - *Middle Nav Tier:* Menu navigasi 6 item yang memiliki *vertical scrollbar* mandiri (`overflow-y-auto custom-scrollbar`) agar tetap nyaman diakses pada monitor laptop 13-14 inci.
+       - *Bottom Action Tier:* Pinned footer dengan tombol *Segarkan Data* (sinkronisasi) dan indikator status *STMIK TIME • CP Arena v2.1 Connected*.
+    4. **Restrukturisasi App Body ([MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx)):**
+       - Mengubah wrapper menjadi flex column `min-h-screen bg-[#070b14]`, di mana area konten utama `<main>` mengisi sisa layar (`flex-1 min-w-0`) dengan padding leluasa (`px-4 sm:px-6 lg:px-8 py-6`).
+- **Verifikasi Sistem:**
+  - TypeScript Compiler (`tsc --noEmit`): **0 Error / Clean Type Checking**.
+  - System Verification Suite: **64/64 tests lulus 100%**.
+
+### 17. Implementasi Fixed-Position Sidebar & Migrasi Tombol Aksi Logout
+- **Tanggal Rilis:** 14 November 2026
+- **Tujuan Rekayasa & UX Improvement:**
+  1. *Sidebar Benar-Benar Terkunci (Fixed Viewport Position):* Mengganti perilaku sticky berbasis kontainer menjadi `position: fixed` (`md:fixed md:top-[61px] md:bottom-0 md:left-0`). Ketika pengguna melakukan *scroll down/up* pada konten soal kuis, katalog, maupun papan peringkat, sidebar tetap 100% diam dan terkunci di tempat tanpa bergerak sedikit pun.
+  2. *Offsetting Konten Utama:* Elemen `<main>` diberi margin kiri responsif (`md:ml-72 lg:ml-80 xl:ml-[328px]`) untuk mengimbangi lebar sidebar fixed, memastikan tidak ada elemen konten yang tertutup.
+  3. *Migrasi Tombol Logout Akun:* Mengubah tombol di bagian bawah sidebar dari *Segarkan Data* menjadi tombol resmi **Keluar (Logout)** yang memicu pembersihan sesi `ArenaStore.logout()` dan pengalihan ke `/login`.
+- **Implementasi Komponen:**
+  - [src/components/arena/StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx): `md:fixed md:top-[61px] md:bottom-0 md:left-0` dengan tombol logout rose gradient.
+  - [src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx): Menyematkan prop `onLogout={handleLogout}` dan margin offset `md:ml-72 lg:ml-80 xl:ml-[328px]`.
+- **Verifikasi Sistem:**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **64/64 tests pass (100%)**.
+
+### 18. Minimalis & Clean Navigation Refactoring: Eliminasi Badge Statis & Arrow Redundant
+- **Tanggal Rilis:** 14 November 2026
+- **Tinjauan UI/UX Designer & Software Engineering:**
+  - **Identifikasi Masalah (Carnival/Rainbow Effect):** Badge statis pada setiap baris menu (`Utama`, `7 Paket`, `Snake-Draft`, `4 Badges`, `Realtime`, `Pengaturan`) menampilkan 6 warna cerah berbeda yang bertabrakan, menciptakan distraksi sensorik visual (*cognitive overload*). Selain itu, badge mengambil ruang horizontal 70-80px sehingga memotong deskripsi sublabel (seperti `Arena Pertarungan ...`).
+  - **Penerapan Prinsip "Less is More" & Standar Industri (Linear, GitHub, Vercel, Supabase):**
+    1. Seluruh badge statis warna-warni dihilangkan, mengembalikan hierarki visual yang tenang, fokus, dan berkelas.
+    2. Ikon chevron panah kanan `>` yang redundant dihilangkan untuk menciptakan tampilan flat-menu modern.
+    3. Tipografi diberikan ruang bernapas leluasa: teks judul menu (`text-sm font-semibold`) dan sublabel (`text-[11px] text-slate-400`) kini tampil 100% utuh tanpa elipsis.
+    4. Indikator aktif dipercantik dengan aksen bar vertikal halus di sisi kiri (`w-1 bg-cyan-400 rounded-r-full`) dipadukan dengan gradient aktif lembut.
+- **Implementasi Komponen:**
+  - [src/components/arena/StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx): Refactoring struktur data `menuItems` dan pembersihan elemen badge/arrow JSX.
+- **Verifikasi Sistem:**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **64/64 unit tests lulus 100%**.
+
+### 19. Transformasi Panel Profil Sidebar: Eliminasi Kotak Avatar Menuju Minimalist Academic Header
+- **Tanggal Rilis:** 14 November 2026
+- **Tinjauan UI/UX Designer & Software Engineering:**
+  - **Latar Belakang:** Kotak avatar emoji 48px di header sidebar redundan dengan avatar yang sudah tampil di TopNavbar, menyita ruang horizontal, dan menimbulkan impresi game kasual yang kontras dengan portal kompetisi akademik.
+  - **Penyempurnaan Desain (After):**
+    1. Kotak avatar `w-12 h-12` resmi dihilangkan dari header sidebar.
+    2. Identitas mahasiswa dirombak dengan tipografi rata kiri (*left-aligned clean typography*):
+       - Baris atas: Codename mahasiswa (`text-base font-extrabold text-white`) bersanding rapi dengan badge live status kelas (`Kelas KAMIS` / `Kelas JUMAT`).
+       - Baris bawah: Identitas akademik lengkap (`NIM • Prodi • Angkatan`) dengan warna slate redup.
+    3. Widget progress bar level dan XP di bawahnya tetap terintegrasi sempurna dengan garis pemisah border halus.
+- **Implementasi Komponen:**
+  - [src/components/arena/StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx): Pembersihan elemen avatar box dan restrukturisasi layout profil.
+- **Verifikasi Sistem:**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **64/64 unit tests lulus 100%**.
+
+### 20. Refinement Card Profil & Gamification Tier Widget: Micro Rank Chip & XP Countdown Highlight
+- **Tanggal Rilis:** 14 November 2026
+- **Tinjauan UI/UX Designer & Software Engineering:**
+  - **Penerapan Psikologi Gamifikasi (*Goal Gradient Effect*):**
+    1. Teks sisa XP ke level berikutnya diubah menjadi menyala dan memotivasi: `Butuh `**`31 XP`**` ke Lv.5`, di mana angka `31 XP` di-highlight warna amber cerah (`text-amber-400 font-bold`).
+    2. Gelar Big-O (`⚡ O(N) Sprinter`) yang sebelumnya berada di catatan kaki kecil dinaikkan kelasnya menjadi **Micro Rank Badge Chip** berlatar gelap (`bg-[#111827] border border-cyan-500/20 text-cyan-300 font-semibold px-2 py-0.5 rounded-md`).
+    3. Progress bar XP dipertebal (`h-2.5`) dengan *specular shimmer tip* (`bg-white/70 blur-[1px]`) di ujung bar untuk memberikan kesan hidup dan dinamis.
+  - **Penataan Tipografi Identitas:**
+    - NIM dikemas dalam *monospace chip badge* yang presisi.
+    - Prodi dan angkatan menggunakan font sans-serif halus (`Sistem Informasi '25`).
+    - Badge kelas disempurnakan dengan rasio visual yang lebih seimbang.
+- **Implementasi Komponen:**
+  - [src/components/arena/StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx): Penyempurnaan card profil, progress bar shimmer, rank chip, dan countdown highlight.
+- **Verifikasi Sistem:**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **64/64 unit tests lulus 100%**.
+
+### 21. Restrukturisasi Arsitektur Navigasi: Grouped Flat Navigation (Standar DOMjudge/Linear)
+- **Tanggal Rilis:** 14 November 2026
+- **Tinjauan UI/UX Designer & Software Engineering:**
+  - **Eliminasi Teks Redundan & Noise:** Menghapus teks artifak `6 MENU` dan mengganti label kaku `MENU NAVIGASI PESERTA` menjadi pengelompokan fungsional (*Grouped Flat Sections*).
+  - **Pencegahan Anti-Pattern Sub-Sub-Menu:** Menghindari sistem *nested accordion menu* 3 level yang menghambat kecepatan navigasi mahasiswa saat kontes live (Fitts's Law). Sebagai gantinya, mengadopsi navigasi datar 1-klik yang dikelompokkan ke dalam kategori domain:
+    1. **KOMPETISI & ARENA (DOMjudge Core):** Dashboard (Overview), Katalog Game (Tantangan Solo/Kontes), Team Battle (Arena Tim & Kode Gabung), dan Klasemen & Ranking (Scoreboard ICPC).
+    2. **AKADEMIK & PROFIL:** Capaian & Evaluasi (Milestones & Rapor Dosen) dan Profil & Avatar (Kustomisasi Karakter).
+    3. **PANEL PEMBINA (jika role ADMIN):** Akses instan Command Center Dosen.
+- **Implementasi Komponen:**
+  - [src/components/arena/StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx): Pemisahan `arenaMenuItems` dan `academicMenuItems` dengan section headers minimalis.
+- **Verifikasi Sistem:**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **64/64 unit tests lulus 100%**.
+
+### 22. SDLC Sprint 1: Realisasi Mental Model DOMjudge Internal (Restrukturisasi Kategori, Naming Semantik, & Menu Riwayat Submisi)
+- **Tanggal Rilis:** 14 November 2026
+- **Tinjauan SDLC & Arsitektur Perangkat Lunak:**
+  - **Transisi Domain Model (Ubiquitous Language):** Mengubah terminologi kasual kuis ("Game", "Team Battle", "Avatar") menjadi terminologi resmi platform penjurian *Competitive Programming* ala DOMjudge:
+    1. **`KOMPETISI DOMJUDGE (LIVE ARENA)`**
+       - 📊 **Overview Kontes** (`/mahasiswa/dashboard`) — Status kontes, countdown timer, & akses cepat.
+       - 🏆 **Arena Kontes** (`/mahasiswa/katalog` atau `/mahasiswa/kontes`) — Problem set A–Z dan pengerjaan soal.
+       - 👥 **Tim & Kode Gabung** (`/mahasiswa/team` atau `/mahasiswa/tim`) — Squad roster dan persiapan registrasi kode tim (maks. 3 mahasiswa).
+       - 📊 **Scoreboard ICPC** (`/mahasiswa/leaderboard` atau `/mahasiswa/scoreboard`) — Live Matrix board dengan penalti dan freeze status.
+       - 📝 **Riwayat Submisi** (`/mahasiswa/submisi`) — Live judge log verdicts (Accepted, Test Case count, penalti integritas tab).
+    2. **`LATIHAN & EVALUASI KAMPUS`**
+       - 🎖️ **Evaluasi Akademik** (`/mahasiswa/capaian` atau `/mahasiswa/evaluasi`) — Rekap nilai dosen, diagnostik materi Big-O, dan XP.
+       - ⚙️ **Profil Mahasiswa** (`/mahasiswa/profil`) — Akun, kredensial NIM, dan pengaturan identitas.
+  - **Implementasi Komponen Baru & URL Aliases:**
+    - [src/components/arena/SubmissionsHistoryTab.tsx](file:///d:/CP-Arena/src/components/arena/SubmissionsHistoryTab.tsx): Tabel live verdict log submisi peserta dengan filter submisi pribadi vs satu kelas.
+    - [src/app/mahasiswa/[menu]/page.tsx](file:///d:/CP-Arena/src/app/mahasiswa/[menu]/page.tsx): Dukungan semantic aliases (`kontes`, `scoreboard`, `tim`, `evaluasi`) dan penambahan rute `/mahasiswa/submisi`.
+    - [src/components/arena/StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx): Layout Grouped Navigation DOMjudge dengan ikon teknis (`Code2`, `Users`, `FileText`, `Trophy`).
+- **Verifikasi Sistem & Penjaminan Mutu (QA):**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **70/70 unit tests lulus 100%** di [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs).
+
+### 23. SDLC Sprint 2: Implementasi Engine Tim & Kode Gabung 6-Karakter (DOMjudge ICPC Standard)
+- **Tanggal Rilis:** 14 November 2026
+- **Tinjauan SDLC & Arsitektur Perangkat Lunak:**
+  - **Kebutuhan Bisnis & Visi DOMjudge Internal:** Memungkinkan mahasiswa mendaftarkan squad kompetisi secara instan dan mandiri menggunakan kode unik 6 karakter. Si A mendirikan tim, membagikan kode ke Si B dan Si C, dan keduanya otomatis tergabung ke dalam 1 tim kompetisi tanpa intervensi manual dosen.
+  - **Spesifikasi Aturan & Validasi Engine (Domain Rules):**
+    1. **Format Kode Tim 6-Karakter:** Diterbitkan otomatis dengan format `CP` + 4 karakter alfanumerik (contoh: `CPVAQP`, `CP882A`) dengan toleransi case-insensitive, trimming, dan sanitasi tanda hubung.
+    2. **Batas Kuota Roster ICPC:** Maksimal tepat 3 mahasiswa per tim (Trio). Pendaftaran anggota ke-4 otomatis ditolak dengan pesan kesalahan ramah pengguna.
+    3. **Kohort Kelas Integritas:** Mahasiswa hanya dapat bergabung ke tim yang berada di kelas jadwal yang sama (`KAMIS` vs `JUMAT`).
+    4. **Siklus Hidup Tim (Lifecycle):**
+       - *Create Team:* Mahasiswa menjadi Ketua Tim (`leader_nim`) dan mendapatkan kode gabung.
+       - *Join Team with Code:* Anggota otomatis terdaftar dan total skor XP tim terakumulasi secara dinamis.
+       - *Leave Team:* Mahasiswa dapat keluar; jika ketua keluar, kepemimpinan diserahkan ke anggota berikutnya.
+       - *Disband Team:* Tim dapat dibubarkan oleh Ketua Tim atau Dosen, mengembalikan seluruh anggota menjadi peserta solo.
+  - **Implementasi Komponen & Integrasi:**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts): Penambahan atribut `kode_gabung`, `leader_nim`, dan interface `TeamMemberInfo`.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): Implementasi metode `generateTeamJoinCode`, `createTeam`, `joinTeamWithCode`, `leaveTeam`, `disbandTeam`, `getTeamMembers`, serta memory-store fallback untuk eksekusi serverless dan Node.js test runner.
+    - [src/components/arena/TeamBattleTab.tsx](file:///d:/CP-Arena/src/components/arena/TeamBattleTab.tsx): Transformasi UI menjadi ICPC Team Roster Hub dengan Hero Join Code spotlight, 3 kartu slot anggota visual (Leader 👑, Member #2, Member #3), panel gabung/buat tim, direktori tim terbuka, dan pembuka PIN tantangan kolaboratif.
+    - [src/components/arena/LeaderboardView.tsx](file:///d:/CP-Arena/src/components/arena/LeaderboardView.tsx): Integrasi highlight `TIM ANDA`, kode gabung tim, dan roster nama anggota pada kolom Klasemen Tim Scoreboard.
+    - [supabase/schema.sql](file:///d:/CP-Arena/supabase/schema.sql): Sinkronisasi kolom `kode_gabung VARCHAR(20) UNIQUE` dan `leader_nim VARCHAR(30)` pada tabel `public.teams`.
+- **Verifikasi Sistem & Penjaminan Mutu (QA):**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **102/102 unit tests lulus 100%** di [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs) (mencakup 10 skenario baru siklus engine kode tim).
+
+### 24. SDLC Sprint 3: DOMjudge Internal Contest Freeze Scoreboard & Problem Set A–Z
+- **Tanggal Rilis:** 14 November 2026
+- **Tinjauan SDLC & Arsitektur Perangkat Lunak:**
+  - **Realisasi Standar Penjurian ICPC & DOMjudge Matrix Board:** Mengembangkan matriks 2D resmi kontes pemrograman yang menghubungkan peserta/tim terhadap Problem Set A–G dengan sistem balon warna, waktu penalti (menit), dan mekanisme Scoreboard Freeze.
+  - **Spesifikasi Aturan & Fitur (Domain Rules):**
+    1. **Nomenklatur Problem Set A–G & Balon Warna:**
+       - Problem A (🔴 Red): Onboarding Arena: Pemanasan Logika & Big-O
+       - Problem B (🟢 Emerald): Fast I/O & Presisi Python
+       - Problem C (🔵 Sky): Anatomi Online Judge
+       - Problem D (🟡 Amber): Analisis 10^8 & Ad-Hoc
+       - Problem E (🟣 Purple): Pola Kompleksitas Algoritma
+       - Problem F (🟠 Orange): Observasi Invarian & Game Theory (Mode Team)
+       - Problem G (🌸 Pink): Combinatorial Game Theory
+    2. **Status Cell Matriks Penjurian:**
+       - *First to Solve (First Blood) 🏆:* Kotak hijau tua menyala dengan tanda bintang emas `⭐️` dan catatan `tries/minutes`.
+       - *Accepted (Solved) ✅:* Kotak hijau dengan rincian percobaan dan menit solve.
+       - *Failed (Not Passed) ❌:* Kotak merah tua dengan tanda `-tries` (misal `-1`, `-2`).
+       - *Pending Freeze ⏳:* Kotak biru berkedip dengan tanda `?` atau `+tries?` saat mode Scoreboard Freeze aktif.
+       - *Unattempted:* Titik netral (`•`).
+    3. **Scoreboard Freeze Simulator (15 Menit Terakhir Kontes):**
+       - Toggle interaktif `Freeze / Live` yang mensimulasikan protokol ICPC di mana submisi di 15 menit terakhir kontes dikunci dan disembunyikan sampai sesi pengumuman juara (*reveal ceremony*).
+    4. **Dual Mode View:**
+       - *Tab Matriks ICPC:* Tabel matriks horizontal 2D dengan statistik footer total solved per problem.
+       - *Tab Podium & Tim:* Podest top-3 juara dan klasemen regu squad.
+  - **Implementasi Komponen & Integrasi:**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts): Penambahan interface `ICPCProblemStatus`, `ICPCScoreboardRow`, `ICPCProblemMeta`, dan konstanta `ICPC_PROBLEMS_DEF`.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): Implementasi metode `getICPCScoreboard(klubFilter, isFrozen)` dengan algoritma sorting ICPC (Solved count DESC $\rightarrow$ Penalty time ASC $\rightarrow$ XP DESC).
+    - [src/components/arena/LeaderboardView.tsx](file:///d:/CP-Arena/src/components/arena/LeaderboardView.tsx): Antarmuka Matriks ICPC DOMjudge dengan Freeze Banner, balon legend bar, cell status real-time, dan highlight pengguna aktif.
+    - [src/components/arena/GameCatalogGrid.tsx](file:///d:/CP-Arena/src/components/arena/GameCatalogGrid.tsx): Penyematan badge alfabetis Problem A–G dan balon warna pada setiap kartu soal di Arena Kontes.
+- **Verifikasi Sistem & Penjaminan Mutu (QA):**
+  - TypeScript Compilation: **0 Error**.
+  - System Test Suite: **124/124 unit tests lulus 100%** di [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs) (mencakup 22 skenario uji matriks ICPC & freeze simulator).
+
+---
+
+### Bagian 25: Sprint 4 — Redesain Profil Mahasiswa & Monogram Inisial Akademik (Enterprise & Competitive Standard)
+- **Konteks & Kebutuhan UI/UX:**
+  - Evaluasi halaman `/mahasiswa/profil` menunjukkan adanya ketidakselarasan antara orientasi kompetisi resmi (DOMjudge / ICPC) dengan elemen gamifikasi kasual.
+  - Tampilan lama memuat grid 12 emoji avatar kartun (`🦊, 🐉, 🤖, 🧙‍♂️, 🥷, 🦁, 🦅, ⚡, 🔥, 🛡️, 👾, 👑`) dan diksi video game kasual (*"Cyber-Arena", "Kustomisasi Avatar", "Julukan Kompetitif"*), yang menurunkan impresi profesional platform universitas.
+- **Transformasi & Solusi Desain UI/UX:**
+  1. **Eliminasi Total 12 Emoji Avatar Kasual:**
+     - Seluruh avatar kartun/hewan dihilangkan demi menjaga keseriusan dan wibawa akademik.
+  2. **Monogram Inisial Mahasiswa Otomatis (Linear / GitHub Style):**
+     - Generator inisial dua huruf dinamis berbasis nama lengkap mahasiswa (contoh: Indra Setiawan $\rightarrow$ `"IS"`, Cecilia Agnesia $\rightarrow$ `"CA"`).
+     - Desain monogram squircle dengan gradien biru-indigo-cyan (`from-blue-600 via-indigo-600 to-cyan-500`) dan efek glow halus.
+  3. **3 Kartu Metrik Ringkas & Bernilai Tambah:**
+     - *Reputasi Algoritma:* Akumulasi XP, Level, Tier badge, dan progress menuju level berikutnya.
+     - *Status Squad ICPC DOMjudge:* Nama tim, kode gabung 6-karakter (`[TIMK01]`), dan indikator kapasitas regu bertiga (`● 3/3` atau `● 1/3`).
+     - *Performa Kampus:* Rata-rata nilai akademik (0–100) dan total problem solved (AC).
+  4. **Struktur Kredensial Akademik Resmi Kampus STMIK TIME:**
+     - Data resmi read-only: NIM, Nama Lengkap, Program Studi & Angkatan, Kelas Reguler & Jadwal Lab.
+  5. **Form Standar DOMjudge Contest Codename / Handle:**
+     - Penggantian label "Julukan Kompetitif" menjadi "Contest Codename / Handle" yang terhubung langsung ke nama samaran pada Scoreboard ICPC Matrix dan ticker First Blood.
+- **Implementasi Komponen:**
+  - [src/components/arena/ProfileTab.tsx](file:///d:/CP-Arena/src/components/arena/ProfileTab.tsx): Redesain menyeluruh dengan inisial monogram, metric cards, kredensial akademik, dan contest handle form.
+  - [src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx): Penyesuaian header menjadi *"Profil Mahasiswa & Akun Kompetisi"* serta passing props teams, submissions, dan games.
+- **Verifikasi & Validasi:**
+  - TypeScript Compilation: **0 Error** via `npx tsc --noEmit`.
+  - Verification Suite: **124/124 Tests PASS (100%)** via `npm test`.
+

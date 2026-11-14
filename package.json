@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node -e \"try { fs.rmSync('.next', { recursive: true, force: true }); } catch (e) {}\"",
     "dev": "next dev",
+    "clean": "node -e \"try { fs.rmSync('.next', { recursive: true, force: true }); } catch (e) {}\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx tests/verify-system.mjs"
+    "test": "tsx tests/verify-arena-system.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

@@ -6,7 +6,7 @@ import { SupportedLanguage, TestCase, Verdict } from '@/types';
 import { CODE_STARTERS } from '@/lib/mock-data';
 import { evaluateCode, EvaluationResult } from '@/lib/judge/evaluator';
 import VerdictBadge from './VerdictBadge';
-import confetti from 'canvas-confetti';
+import { fireConfetti } from '@/lib/confetti';
 
 interface CodeEditorProps {
   problemSlug: string;
@@ -89,7 +89,7 @@ export default function CodeEditor({
       setIsEvaluating(false);
 
       if (result.verdict === 'AC') {
-        confetti({
+        fireConfetti({
           particleCount: 50,
           spread: 60,
           origin: { y: 0.8 },
@@ -109,7 +109,7 @@ export default function CodeEditor({
       setIsEvaluating(false);
 
       if (result.verdict === 'AC') {
-        confetti({
+        fireConfetti({
           particleCount: 100,
           spread: 70,
           origin: { y: 0.6 },

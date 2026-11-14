@@ -1,355 +1,223 @@
 -- ==============================================================================
--- CP ARENA (COMPETITIVE PROGRAMMING ARENA)
--- Supabase PostgreSQL Database Schema with Row-Level Security (RLS)
--- Designed for University Students with NIM Authentication
+-- STMIK TIME — CP ARENA: SUPABASE POSTGRESQL RELATIONAL SCHEMA (5 TABEL UTAMA)
+-- Pembina: Tarq Hilmar Siregar, S.Kom
+-- Kohort: Kelas KAMIS (15 SI 2025) & Kelas JUMAT (13 TI/SI 2024 & 2025)
 -- ==============================================================================
 
--- 1. EXTENSIONS
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 2. DROP TABLES IF EXIST (Order matters due to foreign keys)
+-- 1. DROP EXISTING RELATIONS (IF ANY)
 DROP TABLE IF EXISTS public.submissions CASCADE;
-DROP TABLE IF EXISTS public.test_cases CASCADE;
-DROP TABLE IF EXISTS public.problems CASCADE;
-DROP TABLE IF EXISTS public.contest_registrations CASCADE;
-DROP TABLE IF EXISTS public.contests CASCADE;
-DROP TABLE IF EXISTS public.profiles CASCADE;
+DROP TABLE IF EXISTS public.questions CASCADE;
+DROP TABLE IF EXISTS public.games CASCADE;
+DROP TABLE IF EXISTS public.teams CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
 
--- 3. PROFILES TABLE (Linked with Supabase auth.users)
-CREATE TABLE public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  nim VARCHAR(30) UNIQUE NOT NULL,
-  full_name VARCHAR(100) NOT NULL,
-  role VARCHAR(20) NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'lecturer', 'admin')),
-  class_group VARCHAR(50) DEFAULT 'Teknik Informatika 2024',
-  rating INT NOT NULL DEFAULT 1200,
-  solved_count INT NOT NULL DEFAULT 0,
-  avatar_url TEXT,
+-- 2. TABEL TEAMS
+CREATE TABLE public.teams (
+  id_tim VARCHAR(50) PRIMARY KEY,
+  nama_tim VARCHAR(150) NOT NULL,
+  klub_hari VARCHAR(10) NOT NULL CHECK (klub_hari IN ('KAMIS', 'JUMAT', 'ALL')),
+  kode_gabung VARCHAR(20) UNIQUE,
+  leader_nim VARCHAR(30),
+  daftar_nim_json JSONB NOT NULL DEFAULT '[]'::JSONB,
+  daftar_nama_json JSONB NOT NULL DEFAULT '[]'::JSONB,
+  total_skor_tim INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 3. TABEL USERS
+CREATE TABLE public.users (
+  nim VARCHAR(30) PRIMARY KEY,
+  password VARCHAR(255) NOT NULL,
+  nama_lengkap VARCHAR(120) NOT NULL,
+  codename VARCHAR(80) NOT NULL,
+  avatar VARCHAR(20) NOT NULL DEFAULT '🦊',
+  role VARCHAR(20) NOT NULL DEFAULT 'PESERTA' CHECK (role IN ('ADMIN', 'PESERTA')),
+  prodi VARCHAR(80) NOT NULL,
+  angkatan INT NOT NULL DEFAULT 2025,
+  kelas_reguler VARCHAR(50) NOT NULL,
+  klub_hari VARCHAR(10) NOT NULL CHECK (klub_hari IN ('KAMIS', 'JUMAT', 'ALL')),
+  total_xp INT NOT NULL DEFAULT 0,
+  level INT NOT NULL DEFAULT 1,
+  tier_badge VARCHAR(80) NOT NULL DEFAULT '🌱 Logic Novice',
+  milestones_json JSONB NOT NULL DEFAULT '[]'::JSONB,
+  id_tim VARCHAR(50) REFERENCES public.teams(id_tim) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index on NIM for ultra-fast lookup
-CREATE INDEX idx_profiles_nim ON public.profiles(nim);
-CREATE INDEX idx_profiles_rating ON public.profiles(rating DESC);
+CREATE INDEX idx_users_klub_hari ON public.users(klub_hari);
+CREATE INDEX idx_users_xp ON public.users(total_xp DESC);
 
--- 4. CONTESTS TABLE
-CREATE TABLE public.contests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title VARCHAR(200) NOT NULL,
-  slug VARCHAR(200) UNIQUE NOT NULL,
-  description TEXT,
-  start_time TIMESTAMPTZ NOT NULL,
-  end_time TIMESTAMPTZ NOT NULL,
-  freeze_minutes INT NOT NULL DEFAULT 60,
-  penalty_minutes INT NOT NULL DEFAULT 20,
-  is_published BOOLEAN NOT NULL DEFAULT TRUE,
-  created_by UUID REFERENCES public.profiles(id),
+-- 4. TABEL GAMES
+CREATE TABLE public.games (
+  id_game VARCHAR(30) PRIMARY KEY,
+  ref_pertemuan VARCHAR(50) NOT NULL,
+  judul_game VARCHAR(255) NOT NULL,
+  kategori_materi VARCHAR(100) NOT NULL,
+  kesulitan VARCHAR(20) NOT NULL CHECK (kesulitan IN ('Easy', 'Medium', 'Hard')),
+  mode_game VARCHAR(10) NOT NULL CHECK (mode_game IN ('SOLO', 'TEAM')),
+  pin_akses VARCHAR(30),
+  status_kamis VARCHAR(20) NOT NULL DEFAULT 'UPCOMING' CHECK (status_kamis IN ('UPCOMING', 'OPEN', 'FROZEN', 'ENDED')),
+  status_jumat VARCHAR(20) NOT NULL DEFAULT 'UPCOMING' CHECK (status_jumat IN ('UPCOMING', 'OPEN', 'FROZEN', 'ENDED')),
+  durasi_total_menit INT NOT NULL DEFAULT 20,
+  durasi_per_soal_detik INT NOT NULL DEFAULT 60,
+  min_nilai_lulus INT NOT NULL DEFAULT 70,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_contests_slug ON public.contests(slug);
-CREATE INDEX idx_contests_timing ON public.contests(start_time, end_time);
-
--- 5. CONTEST REGISTRATIONS
-CREATE TABLE public.contest_registrations (
-  contest_id UUID NOT NULL REFERENCES public.contests(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (contest_id, user_id)
-);
-
--- 6. PROBLEMS TABLE
-CREATE TABLE public.problems (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  contest_id UUID REFERENCES public.contests(id) ON DELETE SET NULL,
-  title VARCHAR(200) NOT NULL,
-  slug VARCHAR(200) UNIQUE NOT NULL,
-  order_letter VARCHAR(5) DEFAULT 'A',
-  statement_md TEXT NOT NULL,
-  input_format TEXT NOT NULL,
-  output_format TEXT NOT NULL,
-  constraints TEXT NOT NULL,
-  time_limit_ms INT NOT NULL DEFAULT 1000,
-  memory_limit_mb INT NOT NULL DEFAULT 256,
-  difficulty VARCHAR(20) NOT NULL DEFAULT 'Medium' CHECK (difficulty IN ('Easy', 'Medium', 'Hard')),
-  tags TEXT[] DEFAULT ARRAY[]::TEXT[],
-  is_published BOOLEAN NOT NULL DEFAULT TRUE,
-  created_by UUID REFERENCES public.profiles(id),
+-- 5. TABEL QUESTIONS
+CREATE TABLE public.questions (
+  id_soal VARCHAR(30) PRIMARY KEY,
+  id_game VARCHAR(30) NOT NULL REFERENCES public.games(id_game) ON DELETE CASCADE,
+  judul VARCHAR(200) NOT NULL,
+  narasi_soal TEXT NOT NULL,
+  cuplikan_kode TEXT,
+  opsi_jawaban TEXT, -- Dipisahkan karakter '|', jika kosong maka isian singkat
+  kunci_jawaban TEXT NOT NULL,
+  teks_hint TEXT,
+  editorial TEXT NOT NULL,
+  poin_dasar INT NOT NULL DEFAULT 50,
+  first_blood_by VARCHAR(80),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_problems_slug ON public.problems(slug);
-CREATE INDEX idx_problems_contest ON public.problems(contest_id);
+CREATE INDEX idx_questions_game ON public.questions(id_game);
 
--- 7. TEST CASES TABLE
-CREATE TABLE public.test_cases (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  problem_id UUID NOT NULL REFERENCES public.problems(id) ON DELETE CASCADE,
-  input_data TEXT NOT NULL,
-  expected_output TEXT NOT NULL,
-  explanation TEXT,
-  is_sample BOOLEAN NOT NULL DEFAULT FALSE,
-  points INT NOT NULL DEFAULT 10,
-  order_index INT NOT NULL DEFAULT 1,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_test_cases_problem ON public.test_cases(problem_id);
-
--- 8. SUBMISSIONS TABLE
+-- 6. TABEL SUBMISSIONS
 CREATE TABLE public.submissions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  problem_id UUID NOT NULL REFERENCES public.problems(id) ON DELETE CASCADE,
-  contest_id UUID REFERENCES public.contests(id) ON DELETE SET NULL,
-  language VARCHAR(30) NOT NULL CHECK (language IN ('cpp', 'python', 'java', 'c', 'javascript')),
-  source_code TEXT NOT NULL,
-  verdict VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (verdict IN ('AC', 'WA', 'TLE', 'MLE', 'CE', 'RE', 'PENDING', 'RUNNING')),
-  execution_time_ms INT DEFAULT 0,
-  memory_kb INT DEFAULT 0,
-  score INT NOT NULL DEFAULT 0,
-  error_message TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id_submission VARCHAR(60) PRIMARY KEY,
+  timestamp_mulai TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  timestamp_update TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  nim VARCHAR(30) NOT NULL REFERENCES public.users(nim) ON DELETE CASCADE,
+  codename VARCHAR(80) NOT NULL,
+  klub_hari VARCHAR(10) NOT NULL,
+  id_game VARCHAR(30) NOT NULL REFERENCES public.games(id_game) ON DELETE CASCADE,
+  mode_game VARCHAR(10) NOT NULL,
+  id_tim VARCHAR(50),
+  skor_xp INT NOT NULL DEFAULT 0,
+  nilai_akademik INT NOT NULL DEFAULT 0,
+  jumlah_benar INT NOT NULL DEFAULT 0,
+  total_soal INT NOT NULL DEFAULT 0,
+  status_lulus VARCHAR(20) NOT NULL DEFAULT 'BELUM LULUS' CHECK (status_lulus IN ('LULUS', 'BELUM LULUS')),
+  streak_saat_ini INT NOT NULL DEFAULT 0,
+  tab_switch_count INT NOT NULL DEFAULT 0,
+  status_sesi VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status_sesi IN ('ACTIVE', 'DONE')),
+  detail_jawaban_json JSONB NOT NULL DEFAULT '[]'::JSONB
 );
 
-CREATE INDEX idx_submissions_user ON public.submissions(user_id);
-CREATE INDEX idx_submissions_problem ON public.submissions(problem_id);
-CREATE INDEX idx_submissions_contest ON public.submissions(contest_id);
-CREATE INDEX idx_submissions_created_at ON public.submissions(created_at DESC);
+CREATE INDEX idx_submissions_user_game ON public.submissions(nim, id_game);
+CREATE INDEX idx_submissions_game ON public.submissions(id_game);
 
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.contests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.contest_registrations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.problems ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.test_cases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.games ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.submissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
 
--- Helper function to check if current authenticated user is lecturer or admin
-CREATE OR REPLACE FUNCTION public.is_staff()
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role IN ('lecturer', 'admin')
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+CREATE POLICY "Allow public read access to users" ON public.users FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to games" ON public.games FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to teams" ON public.teams FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to submissions" ON public.submissions FOR SELECT USING (true);
+CREATE POLICY "Allow authenticated read access to questions" ON public.questions FOR SELECT USING (true);
 
--- Profiles: Public read, User can update own profile, Staff can manage all
-CREATE POLICY "Public profiles are viewable by everyone" 
-  ON public.profiles FOR SELECT 
-  USING (true);
-
-CREATE POLICY "Users can update own profile" 
-  ON public.profiles FOR UPDATE 
-  USING (auth.uid() = id);
-
--- Contests: Public read published contests, Staff can do anything
-CREATE POLICY "Published contests are viewable by everyone" 
-  ON public.contests FOR SELECT 
-  USING (is_published = true OR public.is_staff());
-
-CREATE POLICY "Staff can insert/update/delete contests" 
-  ON public.contests FOR ALL 
-  USING (public.is_staff());
-
--- Problems: Anyone can view published problems
-CREATE POLICY "Published problems are viewable by everyone" 
-  ON public.problems FOR SELECT 
-  USING (is_published = true OR public.is_staff());
-
-CREATE POLICY "Staff can manage problems" 
-  ON public.problems FOR ALL 
-  USING (public.is_staff());
-
--- Test Cases: CRITICAL CP SECURITY RULE
--- Students can ONLY view test cases marked as `is_sample = true`
-CREATE POLICY "Students can only view sample test cases" 
-  ON public.test_cases FOR SELECT 
-  USING (is_sample = true OR public.is_staff());
-
-CREATE POLICY "Staff can manage all test cases" 
-  ON public.test_cases FOR ALL 
-  USING (public.is_staff());
-
--- Submissions:
--- Authenticated users can create submissions
-CREATE POLICY "Users can create their own submissions" 
-  ON public.submissions FOR INSERT 
-  WITH CHECK (auth.uid() = user_id);
-
--- Users can view their own submissions or staff can view all
-CREATE POLICY "Users can view own submissions, staff can view all" 
-  ON public.submissions FOR SELECT 
-  USING (auth.uid() = user_id OR public.is_staff());
-
--- Registrations:
-CREATE POLICY "Users can register for contests" 
-  ON public.contest_registrations FOR INSERT 
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Registrations viewable by everyone" 
-  ON public.contest_registrations FOR SELECT 
-  USING (true);
+-- Allow full writes for development/service role
+CREATE POLICY "Allow service all users" ON public.users FOR ALL USING (true);
+CREATE POLICY "Allow service all games" ON public.games FOR ALL USING (true);
+CREATE POLICY "Allow service all questions" ON public.questions FOR ALL USING (true);
+CREATE POLICY "Allow service all submissions" ON public.submissions FOR ALL USING (true);
+CREATE POLICY "Allow service all teams" ON public.teams FOR ALL USING (true);
 
 -- ==============================================================================
--- AUTOMATIC PROFILE CREATION TRIGGER ON SIGNUP
+-- SEED DATA: 28 MAHASISWA + 1 DOSEN PEMBINA (ADMIN)
 -- ==============================================================================
 
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_nim TEXT;
-  v_name TEXT;
-  v_role TEXT;
-  v_class TEXT;
-BEGIN
-  -- Extract metadata or fallback from email
-  v_nim := COALESCE(NEW.raw_user_meta_data->>'nim', SPLIT_PART(NEW.email, '@', 1));
-  v_name := COALESCE(NEW.raw_user_meta_data->>'full_name', 'Mahasiswa ' || v_nim);
-  v_role := COALESCE(NEW.raw_user_meta_data->>'role', 'student');
-  v_class := COALESCE(NEW.raw_user_meta_data->>'class_group', 'Teknik Informatika 2024');
-
-  INSERT INTO public.profiles (id, nim, full_name, role, class_group)
-  VALUES (NEW.id, v_nim, v_name, v_role, v_class)
-  ON CONFLICT (id) DO UPDATE
-  SET nim = EXCLUDED.nim,
-      full_name = EXCLUDED.full_name;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Bind trigger to auth.users
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- ==============================================================================
--- INITIAL SEED DATA FOR CP ARENA
--- ==============================================================================
-
--- Contests
-INSERT INTO public.contests (id, title, slug, description, start_time, end_time, freeze_minutes, penalty_minutes, is_published)
+-- 1. ADMIN (Tarq Hilmar Siregar, S.Kom)
+INSERT INTO public.users (nim, password, nama_lengkap, codename, avatar, role, prodi, angkatan, kelas_reguler, klub_hari, total_xp, level, tier_badge, milestones_json, id_tim)
 VALUES 
-(
-  'a0000000-0000-0000-0000-000000000001',
-  'Pekan Algoritma Mahasiswa 2026 (PAM-2026)',
-  'pam-2026',
-  'Kompetisi pemrograman tahunan tingkat universitas. Terbuka untuk seluruh mahasiswa angkatan 2023-2026. Format aturan mengacu pada standar ACM-ICPC dengan penalti 20 menit untuk setiap jawaban salah yang akhirnya Accepted.',
-  NOW() - INTERVAL '1 hour',
-  NOW() + INTERVAL '4 hours',
-  60,
-  20,
-  true
-),
-(
-  'a0000000-0000-0000-0000-000000000002',
-  'Warm-up Latihan Mandiri Struktur Data',
-  'warmup-dsa-2026',
-  'Arena latihan mandiri untuk memperkuat fondasi array, stack, queue, dan greedy algorithm.',
-  NOW() - INTERVAL '2 days',
-  NOW() + INTERVAL '30 days',
-  0,
-  0,
-  true
-)
-ON CONFLICT (slug) DO NOTHING;
+('ADMIN', 'ADMIN', 'Tarq Hilmar Siregar, S.Kom', 'Grandmaster_Tarq', '👑', 'ADMIN', 'Teknik Informatika', 2020, 'DOSEN', 'ALL', 9999, 40, '👑 Grandmaster Time', '["FIRST_BLOOD", "PERFECT_100", "SPEED_DEMON", "STREAK_3X"]'::jsonb, NULL),
+('DOSEN001', 'dosen123', 'Tarq Hilmar Siregar, S.Kom', 'Grandmaster_Tarq', '👑', 'ADMIN', 'Teknik Informatika', 2020, 'DOSEN', 'ALL', 9999, 40, '👑 Grandmaster Time', '["FIRST_BLOOD", "PERFECT_100", "SPEED_DEMON", "STREAK_3X"]'::jsonb, NULL);
 
--- Problems
-INSERT INTO public.problems (id, contest_id, title, slug, order_letter, statement_md, input_format, output_format, constraints, time_limit_ms, memory_limit_mb, difficulty, tags, is_published)
+-- 2. KELAS KAMIS (15 Mahasiswa Sistem Informasi 2025)
+INSERT INTO public.users (nim, password, nama_lengkap, codename, avatar, role, prodi, angkatan, kelas_reguler, klub_hari, total_xp, level, tier_badge, milestones_json, id_tim)
 VALUES 
-(
-  'b0000000-0000-0000-0000-000000000001',
-  'a0000000-0000-0000-0000-000000000001',
-  'Penjumlahan Dua Bilangan Prima',
-  'penjumlahan-dua-bilangan-prima',
-  'A',
-  'Diberikan sebuah bilangan bulat genap $N$ yang lebih besar dari $2$. Berdasarkan Hipotesis Goldbach, setiap bilangan genap yang lebih besar dari 2 dapat dinyatakan sebagai penjumlahan dari dua bilangan prima. Tugas Anda adalah menemukan dua bilangan prima $P_1$ dan $P_2$ sedemikian sehingga $P_1 + P_2 = N$ dan nilai $|P_1 - P_2|$ sekecil mungkin. Jika terdapat beberapa kemungkinan, pilih pasangan dengan $P_1 \le P_2$.',
-  'Baris pertama berisi sebuah bilangan bulat $T$ ($1 \le T \le 100$) yang menyatakan jumlah kasus uji. Setiap kasus uji terdiri dari sebuah baris yang berisi satu bilangan genap $N$.',
-  'Untuk setiap kasus uji, cetak dua bilangan prima $P_1$ dan $P_2$ yang dipisahkan oleh spasi pada satu baris.',
-  '4 \le N \le 10^6, N \text{ adalah bilangan genap}',
-  1000,
-  256,
-  'Easy',
-  ARRAY['Math', 'Number Theory', 'Sieve of Eratosthenes'],
-  true
-),
-(
-  'b0000000-0000-0000-0000-000000000002',
-  'a0000000-0000-0000-0000-000000000001',
-  'Rotasi Matriks Spiral Terbalik',
-  'rotasi-matriks-spiral-terbalik',
-  'B',
-  'Diberikan matriks berukuran $M \times N$. Anda diminta untuk menelusuri elemen-elemen matriks tersebut dalam urutan spiral searah jarum jam (dimulai dari pojok kiri atas $(1,1)$ menuju ke kanan, bawah, kiri, atas, dst), lalu mencetak hasil penelusuran tersebut secara terbalik (dari elemen spiral terakhir hingga elemen spiral pertama).',
-  'Baris pertama berisi dua bilangan bulat $M$ dan $N$. $M$ baris berikutnya masing-masing berisi $N$ bilangan bulat yang menyatakan elemen matriks.',
-  'Cetak satu baris berisi $(M \times N)$ bilangan bulat yang dipisahkan oleh spasi, sesuai dengan urutan spiral terbalik.',
-  '1 \le M, N \le 500, -10^9 \le A_{i,j} \le 10^9',
-  1000,
-  256,
-  'Medium',
-  ARRAY['Matrix', 'Implementation', 'Simulation'],
-  true
-),
-(
-  'b0000000-0000-0000-0000-000000000003',
-  'a0000000-0000-0000-0000-000000000001',
-  'Jalur Terpendek Antar Gedung Kampus',
-  'jalur-terpendek-antar-gedung-kampus',
-  'C',
-  'Kampus memiliki $V$ gedung yang dihubungkan oleh $E$ jalan dua arah. Setiap jalan memiliki panjang jarak tertentu (dalam meter). Mahasiswa ingin berjalan dari gedung $S$ menuju gedung $D$ dalam waktu seminimal mungkin. Namun, terdapat $K$ jalan khusus yang sedang dalam perbaikan sehingga tidak dapat dilalui. Carilah jarak terpendek dari $S$ ke $D$. Jika tidak ada jalan yang memungkinkan, cetak -1.',
-  'Baris pertama berisi empat bilangan $V, E, S, D$. $E$ baris berikutnya berisi $u, v, w$ yang menyatakan jalan dua arah antara $u$ dan $v$ dengan bobot $w$. Baris berikutnya berisi bilangan $K$, diikuti oleh $K$ baris berisi pasangan jalan yang ditutup.',
-  'Cetak satu bilangan bulat yang menyatakan jarak terpendek dari $S$ ke $D$, atau -1 jika tidak tercapai.',
-  '2 \le V \le 10^5, 1 \le E \le 2 \times 10^5, 1 \le w \le 10^9',
-  2000,
-  256,
-  'Hard',
-  ARRAY['Graph', 'Dijkstra', 'Shortest Path'],
-  true
-)
-ON CONFLICT (slug) DO NOTHING;
+('2545001', '2545001', 'Cecilia Anggraini', 'Cecilia_AlgoStar', '⚡', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 481, 2, '⚡ O(N) Sprinter', '["SPEED_DEMON"]'::jsonb, NULL),
+('250201002', '250201002', 'Indra Setiawan', 'Indra_trll', '🦊', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 969, 4, '⚡ O(N) Sprinter', '["FIRST_BLOOD", "STREAK_3X"]'::jsonb, NULL),
+('250201003', '250201003', 'Mardianus Gea', 'Mardianus_StackHero', '🛡️', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 966, 4, '⚡ O(N) Sprinter', '["FIRST_BLOOD", "SPEED_DEMON"]'::jsonb, NULL),
+('250201004', '250201004', 'Laksman Dwi Prasetyo', 'Laksman_DPKnight', '🐉', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 898, 4, '⚡ O(N) Sprinter', '["STREAK_3X"]'::jsonb, NULL),
+('250201005', '250201005', 'Ibrena Nora Bosq', 'Ibrenanorabosq', '🥷', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 880, 4, '⚡ O(N) Sprinter', '["SPEED_DEMON"]'::jsonb, NULL),
+('250201006', '250201006', 'Tasya Bitriana', 'Tasya_BitQueen', '👑', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 854, 4, '⚡ O(N) Sprinter', '["PERFECT_100"]'::jsonb, NULL),
+('250201007', '250201007', 'Risca Hashifa', 'Risca_HashHunter', '🧙‍♂️', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 805, 4, '⚡ O(N) Sprinter', '["STREAK_3X"]'::jsonb, NULL),
+('250201008', '250201008', 'Tomy Kurniawan', 'Tomy_FastIO', '🚀', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 710, 3, '⚡ O(N) Sprinter', '["FIRST_BLOOD", "SPEED_DEMON"]'::jsonb, NULL),
+('250201009', '250201009', 'Ahmad Farhan', 'Ahmad_Binary', '🤖', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 680, 3, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('250201010', '250201010', 'Rian Hidayat', 'Rian_GraphMaster', '🦅', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 640, 3, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('250201011', '250201011', 'Bima Sakti', 'Bima_BitManip', '🦁', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 490, 2, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('250201012', '250201012', 'Dina Lestari', 'Dina_Recursion', '👾', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 430, 2, '🌱 Logic Novice', '[]'::jsonb, NULL),
+('250201013', '250201013', 'Fajar Pratama', 'Fajar_Sorting', '🔥', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 390, 2, '🌱 Logic Novice', '[]'::jsonb, NULL),
+('250201014', '250201014', 'Gita Permata', 'Gita_DynamicProg', '⚡', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 240, 1, '🌱 Logic Novice', '[]'::jsonb, NULL),
+('250201015', '250201015', 'Hendra Wijaya', 'Hendra_ArrayPro', '🦊', 'PESERTA', 'Sistem Informasi', 2025, 'SI C 25', 'KAMIS', 180, 1, '🌱 Logic Novice', '[]'::jsonb, NULL);
 
--- Sample Test Cases
-INSERT INTO public.test_cases (problem_id, input_data, expected_output, explanation, is_sample, points, order_index)
+-- 3. KELAS JUMAT (13 Mahasiswa TI 2024, TI 2025 & SI 2025)
+INSERT INTO public.users (nim, password, nama_lengkap, codename, avatar, role, prodi, angkatan, kelas_reguler, klub_hari, total_xp, level, tier_badge, milestones_json, id_tim)
 VALUES 
-(
-  'b0000000-0000-0000-0000-000000000001',
-  '2
-10
-16',
-  '5 5
-3 13',
-  'Untuk N=10, pasangan prima yang mungkin adalah (3, 7) dan (5, 5). Selisih terkecil adalah |5 - 5| = 0. Untuk N=16, pasangan primanya adalah (3, 13) dan (5, 11). Selisih terkecil adalah |5 - 11| = 6, sehingga jawabannya 5 11 (catatan: 3 13 memiliki selisih 10, 5 11 memiliki selisih 6).',
-  true,
-  20,
-  1
-),
-(
-  'b0000000-0000-0000-0000-000000000001',
-  '1
-4',
-  '2 2',
-  'Satu-satunya pasangan prima untuk 4 adalah 2 + 2 = 4.',
-  true,
-  20,
-  2
-),
-(
-  'b0000000-0000-0000-0000-000000000002',
-  '3 3
-1 2 3
-4 5 6
-7 8 9',
-  '5 4 7 8 9 6 3 2 1',
-  'Penelusuran spiral searah jarum jam: 1 2 3 6 9 8 7 4 5. Dibalik menjadi: 5 4 7 8 9 6 3 2 1.',
-  true,
-  30,
-  1
-);
+('240101001', '240101001', 'Willson Gunawan', 'Willson [ SHIRO ]', '🐉', 'PESERTA', 'Teknik Informatika', 2024, 'TI A 24', 'JUMAT', 1250, 5, '🛡️ Greedy Tactician', '["FIRST_BLOOD", "SPEED_DEMON", "STREAK_3X"]'::jsonb, NULL),
+('240101002', '240101002', 'Kevin Anderson', 'MemorySlayer', '🥷', 'PESERTA', 'Teknik Informatika', 2024, 'TI A 24', 'JUMAT', 1190, 5, '🛡️ Greedy Tactician', '["PERFECT_100", "STREAK_3X"]'::jsonb, NULL),
+('240101003', '240101003', 'Steven Chandra', 'HashMaster', '⚡', 'PESERTA', 'Teknik Informatika', 2024, 'TI A 24', 'JUMAT', 980, 4, '⚡ O(N) Sprinter', '["FIRST_BLOOD"]'::jsonb, NULL),
+('240101004', '240101004', 'Ricky Jonathan', 'ByteVoyager', '🚀', 'PESERTA', 'Teknik Informatika', 2024, 'TI B 24', 'JUMAT', 920, 4, '⚡ O(N) Sprinter', '["SPEED_DEMON"]'::jsonb, NULL),
+('240101005', '240101005', 'David Christian', 'MatrixRunner', '🤖', 'PESERTA', 'Teknik Informatika', 2024, 'TI B 24', 'JUMAT', 740, 3, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('240101006', '240101006', 'Michael Tanuwijaya', 'CodePhantom', '🧙‍♂️', 'PESERTA', 'Teknik Informatika', 2024, 'TI B 24', 'JUMAT', 690, 3, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('240101007', '240101007', 'Daniel Ferdinand', 'BinaryTitan', '🛡️', 'PESERTA', 'Teknik Informatika', 2024, 'TI B 24', 'JUMAT', 630, 3, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('250101008', '250101008', 'Jason Leonard', 'QuantumSpark', '🔥', 'PESERTA', 'Teknik Informatika', 2025, 'TI A 25', 'JUMAT', 490, 2, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('250101009', '250101009', 'Bryan Nicholas', 'CyberFalcon', '🦅', 'PESERTA', 'Teknik Informatika', 2025, 'TI A 25', 'JUMAT', 450, 2, '⚡ O(N) Sprinter', '[]'::jsonb, NULL),
+('250101010', '250101010', 'Edwin Prayoga', 'DevRonin', '🦁', 'PESERTA', 'Teknik Informatika', 2025, 'TI A 25', 'JUMAT', 410, 2, '🌱 Logic Novice', '[]'::jsonb, NULL),
+('250101011', '250101011', 'Felix Gunardi', 'PixelSavant', '👾', 'PESERTA', 'Teknik Informatika', 2025, 'TI A 25', 'JUMAT', 380, 2, '🌱 Logic Novice', '[]'::jsonb, NULL),
+('250101012', '250101012', 'Jessica Angelina', 'LogicViper', '🦊', 'PESERTA', 'Teknik Informatika', 2025, 'TI B 25', 'JUMAT', 230, 1, '🌱 Logic Novice', '[]'::jsonb, NULL),
+('250101013', '250101013', 'William Hartono', 'NullPointer', '⚡', 'PESERTA', 'Sistem Informasi', 2025, 'SI A 25', 'JUMAT', 190, 1, '🌱 Logic Novice', '[]'::jsonb, NULL);
 
+-- ==============================================================================
+-- SEED DATA: 7 PAKET GAMES (G1 - G7) PERSIS SESUAI SCREENSHOT
+-- ==============================================================================
+INSERT INTO public.games (id_game, ref_pertemuan, judul_game, kategori_materi, kesulitan, mode_game, pin_akses, status_kamis, status_jumat, durasi_total_menit, durasi_per_soal_detik, min_nilai_lulus)
+VALUES
+('G1', 'Pertemuan 1', 'Onboarding Arena: Pemanasan Logika & Big-O', 'Big-O & Game Theory', 'Easy', 'SOLO', NULL, 'ENDED', 'ENDED', 5, 45, 70),
+('G2', 'Pertemuan 1', '[KAMIS] - ANATOMI ONLINE JUDGE, ATURAN I/O, & JEBAKAN PRESISI PYTHON', 'Big-O & Game Theory', 'Easy', 'SOLO', NULL, 'ENDED', 'UPCOMING', 6, 45, 70),
+('G3', 'Pertemuan 1', '[JUMAT] - ANATOMI ONLINE JUDGE, ATURAN I/O, & JEBAKAN PRESISI PYTHON', 'Big-O & Game Theory', 'Easy', 'SOLO', NULL, 'UPCOMING', 'ENDED', 6, 45, 70),
+('G4', 'Pertemuan 1', '[KAMIS] - ANALISIS KOMPLEKSITAS BIG-O, ATURAN 10^8, & POLA AD-HOC', 'Big-O & Game Theory', 'Medium', 'SOLO', NULL, 'ENDED', 'UPCOMING', 7, 50, 75),
+('G5', 'Pertemuan 1', '[JUMAT] - ANALISIS KOMPLEKSITAS BIG-O, ATURAN 10^8, & POLA AD-HOC', 'Big-O & Game Theory', 'Medium', 'SOLO', NULL, 'UPCOMING', 'ENDED', 7, 50, 75),
+('G6', 'Pertemuan 1', '[KAMIS] - OBSERVASI INVARIAN & COMBINATORIAL GAME THEORY', 'Big-O & Game Theory', 'Hard', 'TEAM', 'TIME-882', 'UPCOMING', 'UPCOMING', 10, 60, 75),
+('G7', 'Pertemuan 1', '[JUMAT] - OBSERVASI INVARIAN & COMBINATORIAL GAME THEORY', 'Big-O & Game Theory', 'Hard', 'TEAM', 'TIME-993', 'FROZEN', 'FROZEN', 10, 60, 75);
+
+-- ==============================================================================
+-- SEED DATA: QUESTIONS & EDITORIALS
+-- ==============================================================================
+INSERT INTO public.questions (id_soal, id_game, judul, narasi_soal, cuplikan_kode, opsi_jawaban, kunci_jawaban, teks_hint, editorial, poin_dasar, first_blood_by)
+VALUES
+('Q101', 'G1', 'Analisis Nested Loop Kompleks', 'Perhatikan cuplikan algoritma di bawah ini. Berapakah kompleksitas asimtotik waktu terburuk (Worst-case Time Complexity) dalam notasi Big-O?', 'for i in range(n):\n    j = 1\n    while j < n:\n        j *= 2\n        total += (i + j)', 'O(N)|O(N log N)|O(N^2)|O(log N)', 'O(N log N)', 'Perhatikan pertumbuhan variabel j yang berlipat ganda dua kali setiap iterasi.', 'Loop luar berjalan N kali. Loop dalam menggandakan j dua kali lipat setiap iterasi (j = 1, 2, 4, 8, ...), sehingga loop dalam berjalan sebanyak log2(N) kali. Total kompleksitas adalah O(N * log N).', 50, 'Tomy_FastIO'),
+
+('Q102', 'G1', 'Jebakan Pembagian Integer Python', 'Pada Python 3, apa output tepat dari baris kode berikut saat memproses batasan bilangan besar?', 'a = 10**18 + 7\nb = 10**18\nprint(int(a / 1) - b)', '7|0|1|OverflowError', '0', 'Perhatikan tipe data kembalian dari operator garis miring tunggal (/) pada Python 3.', 'Operator / di Python selalu menghasilkan float presisi 64-bit IEEE 754 (sekitar 15-17 digit signifikan). 10^18 melebihi presisi float, sehingga pembagian desimal mengalami loss of precision menjadi nilai yang dibulatkan. Gunakan integer division // untuk mempertahankan presisi integer.', 50, 'Tomy_FastIO'),
+
+('Q103', 'G1', 'Batasan Operasi 1 Detik Online Judge', 'Pada Online Judge modern dengan limit waktu 1.0 detik (CPU 2-3 GHz), berapakah estimasi batas aman jumlah operasi komputasi dasar agar tidak terkena Time Limit Exceeded (TLE)?', '10^6 operasi|10^8 operasi|10^10 operasi|10^12 operasi', '10^8 operasi', 'Ingat Aturan Emas 10^8 per detik di CP.', 'Aturan praktis Competitive Programming internasional adalah 1 detik setara dengan sekitar 10^8 operasi dasar (100 juta operasi) pada judge modern.', 50, 'Willson [ SHIRO ]'),
+
+('Q201', 'G2', 'Jebakan Presisi Pembagian Python', 'Diberikan perhitungan matematis berikut. Apa output ekspresi (1 / 10 + 2 / 10 == 3 / 10)?', 'True|False|SyntaxError|TypeError', 'False', 'Pikirkan representasi biner pecahan floating point.', 'Dalam representasi IEEE 754 floating point, 0.1 + 0.2 menghasilkan 0.30000000000000004 sehingga pembandingan kesetaraan presisi biner menghasilkan False.', 60, 'Tomy_FastIO'),
+
+('Q202', 'G2', 'Aturan Fast I/O Python', 'Mengapa pada Competitive Programming kita wajib memakai sys.stdin.readline daripada input() saat membaca 2 * 10^5 baris?', 'sys.stdin.readline tidak membaca newline|input() memicu garbage collector|input() melakukan sanitasi string dan EOF handling berlebih yang lambat|Tidak ada bedanya', 'input() melakukan sanitasi string dan EOF handling berlebih yang lambat', 'Fungsi bawaan input() menangani prompt dan parsing ekstra yang memperlambat loop I/O.', 'input() mengecek prompt, stripping karakter kontrol, dan EOF check per baris yang lambat. sys.stdin.readline membaca raw buffer dari C layer dengan performa hingga 5-10x lebih cepat.', 60, 'Mardianus_StackHero'),
+
+('Q203', 'G2', 'Triage Kompleksitas 1 Detik', 'Jika N = 10^5 dan time limit 1 detik, algoritma dengan kompleksitas manakah yang dipastikan AMAN dari TLE?', 'O(N^2)|O(2^N)|O(N log N)|O(N!)', 'O(N log N)', '10^5 log2(10^5) berkisar 1.7 * 10^6 operasi.', 'O(N log N) membutuhkan ~1.7 * 10^6 operasi, jauh di bawah batas aman 10^8 per detik. O(N^2) membutuhkan 10^10 yang pasti menghasilkan TLE.', 65, 'Tomy_FastIO'),
+
+('Q204', 'G2', 'Langkah Kunci Subtraction Game', 'Pada permainan kelereng di mana dua pemain bergantian mengambil 1, 2, atau 3 kelereng, dan yang mengambil kelereng terakhir MENANG. Kondisi posisi kalah (P-position) terjadi jika jumlah kelereng N adalah?', 'N genap|N ganjil|N habis dibagi 4|N prima', 'N habis dibagi 4', 'Pikirkan kelipatan dari (maksimum langkah + 1).', 'Aturan combinatorial game kelereng modulo (k+1): jika N % 4 == 0, setiap langkah pemain pertama dapat selalu diimbangi oleh pemain kedua hingga sisa 0.', 65, 'Tomy_FastIO');
+
+-- ==============================================================================
+-- SEED DATA: SUBMISSIONS SESUAI REKAP SCREENSHOT (Cecilia_AlgoStar NIM 2545001)
+-- ==============================================================================
+INSERT INTO public.submissions (id_submission, timestamp_mulai, timestamp_update, nim, codename, klub_hari, id_game, mode_game, id_tim, skor_xp, nilai_akademik, jumlah_benar, total_soal, status_lulus, streak_saat_ini, tab_switch_count, status_sesi, detail_jawaban_json)
+VALUES
+('SUB-2545001-G1', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '115 minutes', '2545001', 'Cecilia_AlgoStar', 'KAMIS', 'G1', 'SOLO', NULL, 116, 33, 1, 3, 'BELUM LULUS', 1, 0, 'DONE', 
+ '[{"id_soal": "Q101", "jawaban_mahasiswa": "O(N log N)", "is_correct": true, "is_timeout": false, "opened_hint": false, "sisa_detik": 25, "skor_xp_didapat": 80}, {"id_soal": "Q102", "jawaban_mahasiswa": "7", "is_correct": false, "is_timeout": false, "opened_hint": false, "sisa_detik": 10, "skor_xp_didapat": 0}, {"id_soal": "Q103", "jawaban_mahasiswa": "10^6 operasi", "is_correct": false, "is_timeout": true, "opened_hint": true, "sisa_detik": 0, "skor_xp_didapat": 0}]'::jsonb),
+
+('SUB-2545001-G2', NOW() - INTERVAL '90 minutes', NOW() - INTERVAL '84 minutes', '2545001', 'Cecilia_AlgoStar', 'KAMIS', 'G2', 'SOLO', NULL, 252, 50, 2, 4, 'BELUM LULUS', 2, 0, 'DONE',
+ '[{"id_soal": "Q201", "jawaban_mahasiswa": "False", "is_correct": true, "is_timeout": false, "opened_hint": false, "sisa_detik": 32, "skor_xp_didapat": 98}, {"id_soal": "Q202", "jawaban_mahasiswa": "input() melakukan sanitasi string dan EOF handling berlebih yang lambat", "is_correct": true, "is_timeout": false, "opened_hint": false, "sisa_detik": 28, "skor_xp_didapat": 94}, {"id_soal": "Q203", "jawaban_mahasiswa": "O(N^2)", "is_correct": false, "is_timeout": false, "opened_hint": false, "sisa_detik": 15, "skor_xp_didapat": 0}, {"id_soal": "Q204", "jawaban_mahasiswa": "N genap", "is_correct": false, "is_timeout": false, "opened_hint": true, "sisa_detik": 10, "skor_xp_didapat": 0}]'::jsonb),
+
+('SUB-2545001-G4', NOW() - INTERVAL '50 minutes', NOW() - INTERVAL '43 minutes', '2545001', 'Cecilia_AlgoStar', 'KAMIS', 'G4', 'SOLO', NULL, 113, 25, 1, 4, 'BELUM LULUS', 1, 0, 'DONE',
+ '[{"id_soal": "Q203", "jawaban_mahasiswa": "O(N log N)", "is_correct": true, "is_timeout": false, "opened_hint": false, "sisa_detik": 40, "skor_xp_didapat": 113}, {"id_soal": "Q204", "jawaban_mahasiswa": "N prima", "is_correct": false, "is_timeout": false, "opened_hint": false, "sisa_detik": 12, "skor_xp_didapat": 0}, {"id_soal": "Q201", "jawaban_mahasiswa": "True", "is_correct": false, "is_timeout": true, "opened_hint": false, "sisa_detik": 0, "skor_xp_didapat": 0}, {"id_soal": "Q202", "jawaban_mahasiswa": "Tidak ada bedanya", "is_correct": false, "is_timeout": false, "opened_hint": true, "sisa_detik": 5, "skor_xp_didapat": 0}]'::jsonb);

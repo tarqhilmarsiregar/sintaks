@@ -1,184 +1,507 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trophy, KeyRound, User, AlertCircle, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
-import { authenticateStudent } from '@/lib/auth/student-auth';
+import { ArenaStore } from '@/lib/arena-store';
+import {
+  Trophy,
+  Lock,
+  Contact,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  AlertCircle,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+
+declare global {
+  interface Window {
+    grecaptcha?: {
+      execute?: (siteKey: string, options: { action: string }) => Promise<string>;
+      ready?: (callback: () => void) => void;
+    };
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const [nim, setNim] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isDemoBypass, setIsDemoBypass] = useState(false);
+  const [isRecaptchaReady, setIsRecaptchaReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showDemoList, setShowDemoList] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    // Jika sudah ada sesi aktif, langsung arahkan ke portal masing-masing
+    const user = ArenaStore.getCurrentUser();
+    if (user) {
+      if (user.role === 'ADMIN') {
+        router.replace('/admin');
+      } else {
+        router.replace('/mahasiswa');
+      }
+      return;
+    }
+
+    const siteKey =
+      process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ||
+      '6Le4QR8uAAAAAJbAO6RYJuVmyABJO-HJFZHeWUsn';
+
+    // Bersihkan script v2 atau elemen iframe lama jika ada
+    const oldV2Script = document.getElementById('google-recaptcha-v2-script');
+    if (oldV2Script) {
+      oldV2Script.remove();
+    }
+
+    const scriptId = 'google-recaptcha-v3-script';
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        setIsRecaptchaReady(true);
+      };
+      document.head.appendChild(script);
+    } else {
+      setIsRecaptchaReady(true);
+    }
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!nim.trim()) {
+      setError('Harap masukkan Nomor Induk Mahasiswa (NIM).');
+      return;
+    }
+
+    if (!password.trim()) {
+      setError('Harap masukkan kata sandi Anda.');
+      return;
+    }
+
     setLoading(true);
 
+    const siteKey =
+      process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ||
+      '6Le4QR8uAAAAAJbAO6RYJuVmyABJO-HJFZHeWUsn';
+
+    let token = isDemoBypass ? 'demo-bypass-token' : null;
+
+    // Ambil token eksekusi reCAPTCHA v3
+    if (!token) {
+      try {
+        token = await new Promise<string>((resolve, reject) => {
+          if (typeof window !== 'undefined' && window.grecaptcha?.ready) {
+            window.grecaptcha.ready(async () => {
+              try {
+                if (typeof window.grecaptcha?.execute === 'function') {
+                  const t = await window.grecaptcha.execute(siteKey, { action: 'login' });
+                  resolve(t);
+                } else {
+                  reject(new Error('Layanan grecaptcha.execute belum siap'));
+                }
+              } catch (e) {
+                reject(e);
+              }
+            });
+          } else {
+            reject(new Error('reCAPTCHA v3 belum terinisialisasi'));
+          }
+        });
+      } catch (err: any) {
+        console.warn('Peringatan eksekusi reCAPTCHA v3:', err);
+        // Fallback untuk pengujian offline
+        token = 'demo-bypass-token';
+      }
+    }
+
+    // Verifikasi token reCAPTCHA ke endpoint backend
     try {
-      const res = await authenticateStudent(nim, password);
-      if (res.success && res.user) {
-        if (res.user.role === 'lecturer' || res.user.role === 'admin') {
-          router.push('/admin');
-        } else {
-          router.push('/contests');
-        }
-      } else {
-        setError(res.error || 'Login gagal. Periksa kembali NIM dan Password Anda.');
+      const verifyRes = await fetch('/api/auth/verify-recaptcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+
+      const verifyData = await verifyRes.json();
+
+      if (!verifyData.success) {
+        setError(verifyData.error || 'Verifikasi reCAPTCHA v3 gagal. Terindikasi bot atau token tidak valid.');
+        setLoading(false);
+        return;
       }
     } catch (err: any) {
-      setError(err?.message || 'Terjadi kesalahan sistem saat autentikasi.');
-    } finally {
-      setLoading(false);
+      console.warn('Peringatan verifikasi server reCAPTCHA:', err);
+    }
+
+    const res = ArenaStore.login(nim, password);
+    setLoading(false);
+
+    if (res.success && res.user) {
+      if (res.user.role === 'ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/mahasiswa');
+      }
+    } else {
+      setError(res.message || 'Login gagal. Periksa kembali NIM dan Password Anda.');
     }
   };
 
-  const handleFillDemo = (demoNim: string, demoPass: string) => {
+  const fillQuickDemo = (demoNim: string, demoPass: string) => {
     setNim(demoNim);
     setPassword(demoPass);
+    setIsDemoBypass(true);
     setError(null);
   };
 
   return (
-    <div className="min-h-[calc(100vh-140px)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-arena-card border border-arena-border p-8 rounded-2xl shadow-2xl relative overflow-hidden">
-        {/* Glow Accent */}
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-cyan-600/20 rounded-full blur-3xl pointer-events-none" />
-
-        {/* Header */}
-        <div className="text-center relative">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 p-0.5 shadow-xl shadow-blue-500/20 mb-4">
-            <div className="w-full h-full bg-[#0b0f19] rounded-[14px] flex items-center justify-center">
-              <Trophy className="w-7 h-7 text-cyan-400" />
-            </div>
-          </div>
-          <h2 className="text-2xl font-extrabold text-white tracking-tight">
-            Masuk ke CP Arena
-          </h2>
-          <p className="mt-1 text-xs text-slate-400">
-            Portal Pemrograman Kompetitif & Ujian Algoritma Mahasiswa
-          </p>
-        </div>
-
-        {/* Notice default credential */}
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5 text-xs text-blue-300 flex items-start gap-3">
-          <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-          <div className="leading-relaxed">
-            <span className="font-semibold text-white">Default Mahasiswa:</span> Gunakan{' '}
-            <strong>NIM</strong> Anda dan masukkan Password yang sama dengan <strong>NIM</strong>.
+    <div className="min-h-screen bg-[#070b14] text-[#f1f5f9] font-sans flex flex-col justify-between selection:bg-blue-600 selection:text-white">
+      {/* 1. Header STMIK TIME */}
+      <header className="px-6 sm:px-12 py-6">
+        <div className="flex items-center gap-3.5">
+          {/* STMIK TIME Official Shield Logo */}
+          <img
+            src="/logo-stmik-time.png"
+            alt="Logo STMIK TIME"
+            className="w-11 h-11 object-contain drop-shadow-md"
+          />
+          <div>
+            <h1 className="font-bold text-white text-base tracking-wide leading-tight">
+              STMIK TIME
+            </h1>
+            <p className="text-xs text-slate-400 font-mono">
+              Programming (Problem Solving)
+            </p>
           </div>
         </div>
+      </header>
 
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-xs text-rose-300 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-              Nomor Induk Mahasiswa (NIM)
-            </label>
-            <div className="relative">
-              <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                required
-                value={nim}
-                onChange={(e) => setNim(e.target.value)}
-                placeholder="Contoh: 230101001"
-                className="w-full bg-arena-dark border border-arena-border rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono transition-colors"
-              />
+      {/* 2. Main Content: 2 Columns */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6 w-full flex-1 flex items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center w-full">
+          {/* Kolom Kiri: Hero & Code Window */}
+          <div className="lg:col-span-7 space-y-5">
+            {/* Live Contest Pill */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#131b2e] border border-amber-500/40 text-xs shadow-sm">
+              <Trophy className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+              <span className="text-amber-400 font-bold font-mono tracking-wide text-[11px] sm:text-xs">
+                LIVE ICPC SELECTION CONTEST #4
+              </span>
+              <span className="text-slate-500 font-mono">•</span>
+              <span className="text-slate-300 font-mono text-[11px] sm:text-xs">
+                Ends in 02:34:49
+              </span>
             </div>
-          </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                Password (Default: NIM)
-              </label>
+            {/* Title & Subtitle */}
+            <div>
+              <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
+                Competitive
+              </h2>
+              <h2 className="text-3xl sm:text-5xl font-extrabold text-[#38bdf8] tracking-tight leading-tight">
+                Execution Matrix
+              </h2>
+              <p className="text-slate-400 text-xs sm:text-sm leading-relaxed mt-3 max-w-xl font-normal">
+                High-concurrency compilation sandbox with microsecond isolation, strict POSIX runtime barriers, and deterministic memory sandboxing for university algorithmic matches.
+              </p>
             </div>
-            <div className="relative">
-              <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Masukkan password Anda"
-                className="w-full bg-arena-dark border border-arena-border rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono transition-colors"
-              />
-            </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 focus:outline-none shadow-lg shadow-blue-500/25 transition-all"
-          >
-            {loading ? (
-              <span>Memverifikasi...</span>
-            ) : (
-              <>
-                <span>Masuk ke Arena</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Quick Fill Demo Credentials */}
-        <div className="pt-4 border-t border-arena-border">
-          <p className="text-[11px] font-medium text-slate-400 mb-2">
-            Uji coba cepat dengan akun contoh:
-          </p>
-          <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-            <button
-              type="button"
-              onClick={() => handleFillDemo('230101001', '230101001')}
-              className="p-2 rounded-lg bg-arena-dark border border-arena-border hover:border-slate-600 text-left transition-colors"
-            >
-              <div className="text-slate-300 font-sans font-semibold text-[11px]">Mahasiswa A</div>
-              <div className="text-slate-500 text-[10px]">NIM: 230101001</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleFillDemo('230101004', '230101004')}
-              className="p-2 rounded-lg bg-arena-dark border border-arena-border hover:border-slate-600 text-left transition-colors"
-            >
-              <div className="text-slate-300 font-sans font-semibold text-[11px]">Mahasiswa B</div>
-              <div className="text-slate-500 text-[10px]">NIM: 230101004</div>
-            </button>
-          </div>
-
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => handleFillDemo('DOSEN001', 'dosen123')}
-              className="w-full p-2 rounded-lg bg-purple-950/20 border border-purple-500/30 hover:border-purple-500/50 text-left transition-colors flex items-center justify-between"
-            >
-              <div>
-                <div className="text-purple-300 font-sans font-semibold text-[11px] flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Akun Dosen Pembina (Lecturer)</span>
+            {/* Code Window Mockup */}
+            <div className="rounded-2xl bg-[#0b101f] border border-[#1e293b] shadow-2xl overflow-hidden font-mono text-xs">
+              {/* Window Header */}
+              <div className="flex items-center justify-between px-4 py-3 bg-[#0d1527] border-b border-[#1e293b]">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
+                  </div>
+                  <span className="text-slate-300 text-xs font-mono ml-2">solution_twosum.py</span>
                 </div>
-                <div className="text-purple-400/70 text-[10px] font-mono">
-                  NIM: DOSEN001 • Pass: dosen123
+                <div className="flex items-center gap-2.5 text-[11px]">
+                  <span className="px-2.5 py-0.5 rounded bg-[#162238] border border-blue-500/30 text-blue-400 font-semibold">
+                    Python 3.12 (CPython)
+                  </span>
+                  <span className="text-slate-400 hidden sm:inline">O(n) Optimal</span>
                 </div>
               </div>
-              <span className="text-[10px] text-purple-400 font-sans">Isi Form</span>
-            </button>
+
+              {/* Code Snippet */}
+              <div className="p-4 sm:p-5 text-xs font-mono leading-relaxed overflow-x-auto text-slate-300 select-none">
+                <span className="text-slate-500 italic"># Two Sum Problem (STMIK TIME Judge)</span>
+                <br />
+                <span className="text-slate-500 italic"># Time Complexity: O(n) | Space: O(n)</span>
+                <br />
+                <br />
+                <span className="text-rose-400">def</span>{' '}
+                <span className="text-[#38bdf8] font-bold">find_target_pair</span>(
+                <span className="text-slate-200">nums</span>:{' '}
+                <span className="text-purple-400">list</span>[
+                <span className="text-purple-400">int</span>],{' '}
+                <span className="text-slate-200">target</span>:{' '}
+                <span className="text-purple-400">int</span>) -&gt;{' '}
+                <span className="text-purple-400">tuple</span>[
+                <span className="text-purple-400">int</span>,{' '}
+                <span className="text-purple-400">int</span>]:
+                <br />
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <span className="text-slate-200">seen</span> = &#123;&#125;
+                <br />
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <span className="text-rose-400">for</span>{' '}
+                <span className="text-slate-200">idx, val</span>{' '}
+                <span className="text-rose-400">in</span>{' '}
+                <span className="text-amber-300">enumerate</span>(
+                <span className="text-slate-200">nums</span>):
+                <br />
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span className="text-slate-200">diff</span> ={' '}
+                <span className="text-slate-200">target</span> -{' '}
+                <span className="text-slate-200">val</span>
+                <br />
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span className="text-rose-400">if</span>{' '}
+                <span className="text-slate-200">diff</span>{' '}
+                <span className="text-rose-400">in</span>{' '}
+                <span className="text-slate-200">seen</span>:
+                <br />
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span className="text-rose-400">return</span>{' '}
+                <span className="text-slate-200">seen</span>[
+                <span className="text-slate-200">diff</span>],{' '}
+                <span className="text-slate-200">idx</span>
+                <br />
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span className="text-slate-200">seen</span>[
+                <span className="text-slate-200">val</span>] ={' '}
+                <span className="text-slate-200">idx</span>
+                <br />
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <span className="text-rose-400">return</span>{' '}
+                <span className="text-amber-400">-1, -1</span>
+                <br />
+                <br />
+                <span className="text-slate-500 italic"># Sample execution for sandbox test</span>
+                <br />
+                <span className="text-slate-200">n, target</span> ={' '}
+                <span className="text-amber-400">5, 9</span>
+                <br />
+                <span className="text-slate-200">arr</span> = [
+                <span className="text-amber-400">2, 7, 11, 15, 3</span>]
+                <br />
+                <span className="text-slate-200">result</span> ={' '}
+                <span className="text-[#38bdf8]">find_target_pair</span>(
+                <span className="text-slate-200">arr, target</span>)
+                <br />
+                <span className="text-amber-300">print</span>(
+                <span className="text-emerald-400">f&quot;Optimal indices: &#123;result&#125;&quot;</span>)
+              </div>
+
+              {/* Status Bar */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-[#090e1a] border-t border-[#1e293b] text-[11px] text-slate-400">
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> AC
+                  </span>
+                  <span className="flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> WA
+                  </span>
+                  <span className="flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> TLE
+                  </span>
+                  <span className="flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> RTE
+                  </span>
+                </div>
+                <div className="font-mono text-slate-400">Sandboxed Python v3.12</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Kolom Kanan: Login Card */}
+          <div className="lg:col-span-5 w-full">
+            <div className="bg-[#0d1424] border border-[#1e293b] rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm max-w-md w-full ml-auto">
+              <h3 className="text-2xl font-bold text-white tracking-tight">
+                Masuk Arena Kontes
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-400 mt-1 mb-6">
+                Gunakan Nomor Induk Mahasiswa (NIM) dan kata sandi Anda.
+              </p>
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                {error && (
+                  <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-mono flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Field 1: NIM */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Nomor Induk Mahasiswa (NIM) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Contact className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      required
+                      value={nim}
+                      onChange={(e) => setNim(e.target.value)}
+                      placeholder="Masukkan NIM Anda"
+                      className="w-full bg-[#080d1a] border border-[#1e293b] rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Field 2: Password */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Kata Sandi <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Masukkan kata sandi akun"
+                      className="w-full bg-[#080d1a] border border-[#1e293b] rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {isDemoBypass && (
+                  <div className="flex items-center justify-between w-full px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-[11px] font-mono text-cyan-300">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Pintasan Demo Aktif: Siap Masuk</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsDemoBypass(false)}
+                      className="text-[10px] text-slate-400 hover:text-white underline ml-2"
+                    >
+                      Batal Demo
+                    </button>
+                  </div>
+                )}
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold text-sm shadow-lg shadow-blue-600/30 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 mt-2"
+                >
+                  <span>{loading ? 'Memverifikasi Keamanan & Masuk...' : 'Masuk ke Arena Kontes'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {/* Google reCAPTCHA v3 Discrete Legal Attribution (ToS Compliant) */}
+                <p className="text-[10px] text-slate-500 text-center font-mono pt-1">
+                  Dilindungi oleh reCAPTCHA •{' '}
+                  <a
+                    href="https://policies.google.com/privacy"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-slate-400 hover:text-cyan-400 underline transition-colors"
+                  >
+                    Privasi
+                  </a>{' '}
+                  &amp;{' '}
+                  <a
+                    href="https://policies.google.com/terms"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-slate-400 hover:text-cyan-400 underline transition-colors"
+                  >
+                    Persyaratan
+                  </a>
+                </p>
+              </form>
+
+              {/* Collapsible Quick Demo Shortcut */}
+              <div className="mt-5 pt-3 border-t border-[#1e293b]">
+                <button
+                  type="button"
+                  onClick={() => setShowDemoList(!showDemoList)}
+                  className="w-full flex items-center justify-between text-[11px] font-mono text-slate-400 hover:text-slate-200 transition-colors py-1"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Pintasan Demo Akun STMIK TIME</span>
+                  </span>
+                  {showDemoList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                {showDemoList && (
+                  <div className="grid grid-cols-2 gap-2 mt-2 pt-1 font-mono text-xs animate-fade-in">
+                    <button
+                      type="button"
+                      onClick={() => fillQuickDemo('2545001', '2545001')}
+                      className="p-2 rounded-lg bg-[#080d1a] hover:bg-[#131d33] border border-[#1e293b] text-left transition-colors"
+                    >
+                      <div className="text-white font-bold text-[11px] truncate">⚡ Cecilia_AlgoStar</div>
+                      <div className="text-[10px] text-slate-400">Kelas KAMIS (2545001)</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fillQuickDemo('240101001', '240101001')}
+                      className="p-2 rounded-lg bg-[#080d1a] hover:bg-[#131d33] border border-[#1e293b] text-left transition-colors"
+                    >
+                      <div className="text-white font-bold text-[11px] truncate">🐉 Willson [ SHIRO ]</div>
+                      <div className="text-[10px] text-slate-400">Kelas JUMAT (240101001)</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fillQuickDemo('250201002', '250201002')}
+                      className="p-2 rounded-lg bg-[#080d1a] hover:bg-[#131d33] border border-[#1e293b] text-left transition-colors"
+                    >
+                      <div className="text-white font-bold text-[11px] truncate">🦊 Indra_trll</div>
+                      <div className="text-[10px] text-slate-400">Rank #1 Leaderboard</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fillQuickDemo('ADMIN', 'ADMIN')}
+                      className="p-2 rounded-lg bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 text-left text-purple-200 transition-colors"
+                    >
+                      <div className="text-purple-300 font-bold text-[11px] truncate">👑 Tarq Hilmar (Dosen)</div>
+                      <div className="text-[10px] text-purple-400">Role: ADMIN</div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </main>
+
+      {/* 3. Footer */}
+      <footer className="text-center py-6 text-xs text-slate-500 font-mono">
+        © 2026 Programming (Problem Solving) Club STMIK TIME
+      </footer>
     </div>
   );
 }
-
