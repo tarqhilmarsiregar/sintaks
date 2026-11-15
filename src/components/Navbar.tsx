@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Trophy, Code2, Award, FileText, User, LogOut, Shield, ChevronDown } from 'lucide-react';
 import { UserProfile } from '@/types';
 import { getClientSession, clearClientSession } from '@/lib/auth/student-auth';
+import { SITE_CONFIG } from '@/config/site';
 
 export default function Navbar() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -35,21 +36,19 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand Logo */}
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 p-0.5 shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform">
-            <div className="w-full h-full bg-[#0b0f19] rounded-[10px] flex items-center justify-center">
-              <Trophy className="w-5 h-5 text-cyan-400 group-hover:text-blue-400 transition-colors" />
-            </div>
+          <div className="w-10 h-10 rounded-lg bg-[#111827] border border-[#1f293d] flex items-center justify-center shadow-sm group-hover:border-blue-500/50 transition-colors">
+            <Trophy className="w-5 h-5 text-amber-400" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
-                CP ARENA
+              <span className="font-extrabold text-lg tracking-tight font-mono text-white">
+                {SITE_CONFIG.brandMark}
               </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                CAMPUS
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#131d33] text-blue-400 border border-[#223354] uppercase font-semibold">
+                {SITE_CONFIG.subname}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 font-medium">Universitas Competitive Programming</p>
+            <p className="text-[11px] text-slate-400 font-medium">{SITE_CONFIG.institution.name}</p>
           </div>
         </Link>
 
@@ -67,7 +66,7 @@ export default function Navbar() {
             href="/problems"
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
           >
-            <Code2 className="w-4 h-4 text-cyan-400" />
+            <Code2 className="w-4 h-4 text-blue-400" />
             <span>Bank Soal</span>
           </Link>
 
@@ -104,7 +103,7 @@ export default function Navbar() {
             <div className="relative">
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
-                className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-arena-card border border-arena-border hover:border-slate-700 transition-colors"
+                className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-arena-card border border-arena-border hover:border-slate-700 transition-colors"
               >
                 <div className="w-7 h-7 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-mono text-xs font-bold text-blue-400">
                   {user.nim.substring(0, 2)}

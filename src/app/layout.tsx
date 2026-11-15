@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import { SITE_CONFIG } from '@/config/site';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'STMIK TIME — CP ARENA | Klub Akademik Programming (Problem Solving)',
-  description: 'Platform Gamifikasi Pembelajaran Competitive Programming & Problem Solving STMIK TIME Medan. Dibina oleh Tarq Hilmar Siregar, S.Kom.',
+  title: `${SITE_CONFIG.name} — Competitive Programming Arena | ${SITE_CONFIG.institution.name}`,
+  description: SITE_CONFIG.description,
   icons: {
     icon: '/logo-stmik-time.png',
   },

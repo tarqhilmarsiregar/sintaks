@@ -16,6 +16,8 @@ import ProfileTab from '@/components/arena/ProfileTab';
 import SubmissionsHistoryTab from '@/components/arena/SubmissionsHistoryTab';
 import EditorialModal from '@/components/arena/EditorialModal';
 import QuizArenaModal from '@/components/arena/QuizArenaModal';
+import CodingArenaModal from '@/components/arena/CodingArenaModal';
+import { Problem } from '@/types';
 
 interface MahasiswaArenaContainerProps {
   activeMenu: StudentActiveMenu;
@@ -40,6 +42,8 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   // Modals
   const [activeQuizGame, setActiveQuizGame] = useState<Game | null>(null);
   const [editorialTarget, setEditorialTarget] = useState<{ game: Game; submission: Submission } | null>(null);
+  const [activeCodingProblem, setActiveCodingProblem] = useState<{ problem: Problem; sourceGame?: Game | null } | null>(null);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   // 1. Data Loader
   const loadAllData = useCallback((user: User) => {
@@ -75,6 +79,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
 
   // Handle Dynamic URL Navigation
   const handleMenuChange = (newMenu: StudentActiveMenu) => {
+    setIsMobileNavOpen(false);
     router.push(`/mahasiswa/${newMenu}`);
   };
 
@@ -175,17 +180,24 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   return (
     <div className="min-h-screen bg-[#070b14] text-[#f1f5f9] font-sans antialiased flex flex-col">
       {/* 1. Top Navbar */}
-      <TopNavbar user={currentUser} onLogout={handleLogout} />
+      <TopNavbar
+        user={currentUser}
+        onLogout={handleLogout}
+        onToggleMobileMenu={() => setIsMobileNavOpen((prev) => !prev)}
+        isMobileMenuOpen={isMobileNavOpen}
+      />
 
       {/* 2. Main App Body (Sidebar Full-Height Docked di Kiri + Area Konten Dinamis di Kanan) */}
       <div className="flex-1 flex flex-col md:flex-row w-full min-h-[calc(100vh-61px)]">
-        {/* A. SIDEBAR NAVIGASI KIRI: Full-Height, Fixed di Layar Kiri */}
+        {/* A. SIDEBAR NAVIGASI KIRI: Full-Height Docked di Desktop, Off-Canvas Drawer di Mobile */}
         <StudentSidebar
           currentUser={currentUser}
           activeMenu={activeMenu}
           onMenuChange={handleMenuChange}
           onLogout={handleLogout}
           totalGamesCount={games.length}
+          isMobileOpen={isMobileNavOpen}
+          onCloseMobile={() => setIsMobileNavOpen(false)}
         />
 
         {/* B. AREA KONTEN UTAMA: Offsetting Fixed Sidebar secara Presisi */}
@@ -208,7 +220,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
             {/* Menu 2: /mahasiswa/katalog */}
             {activeMenu === 'katalog' && (
               <div className="space-y-4">
-                <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
                       Katalog Game &amp; Tantangan Algoritma
@@ -217,7 +229,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
                       Pilih paket tantangan sesuai pertemuan dan tingkat kesulitan. Selesaikan untuk mengumpulkan XP &amp; Nilai Akademik!
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-cyan-400 px-3 py-1.5 rounded-xl bg-cyan-950/60 border border-cyan-500/30 shrink-0 self-start sm:self-auto">
+                  <span className="text-xs font-mono font-bold text-blue-400 px-3 py-1.5 rounded-lg bg-[#131d33] border border-[#223354] shrink-0 self-start sm:self-auto">
                     {games.length} Paket Game
                   </span>
                 </div>
@@ -228,6 +240,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
                   currentUser={currentUser}
                   onOpenGame={(g) => setActiveQuizGame(g)}
                   onViewEditorial={(g, s) => setEditorialTarget({ game: g, submission: s })}
+                  onStartCoding={(problem, game) => setActiveCodingProblem({ problem, sourceGame: game })}
                 />
               </div>
             )}
@@ -235,7 +248,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
             {/* Menu 3: /mahasiswa/team (Tim & Kode Gabung DOMjudge) */}
             {activeMenu === 'team' && (
               <div className="space-y-4">
-                <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 shadow-xl">
+                <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 shadow-xl">
                   <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
                     Tim &amp; Kode Gabung (ICPC Team Roster)
                   </h2>
@@ -257,7 +270,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
             {/* Menu 4: /mahasiswa/capaian */}
             {activeMenu === 'capaian' && (
               <div className="space-y-4">
-                <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 shadow-xl">
+                <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 shadow-xl">
                   <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
                     Capaian Prestasi &amp; Rekomendasi Modul
                   </h2>
@@ -298,7 +311,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
             {/* Menu 6: /mahasiswa/profil */}
             {activeMenu === 'profil' && (
               <div className="space-y-4">
-                <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 shadow-xl">
+                <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 shadow-xl">
                   <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
                     Profil Mahasiswa &amp; Akun Kompetisi
                   </h2>
@@ -338,6 +351,20 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
           submission={editorialTarget.submission}
           questions={questions}
           onClose={() => setEditorialTarget(null)}
+          onStartCoding={(problem, game) => {
+            setEditorialTarget(null);
+            setActiveCodingProblem({ problem, sourceGame: game });
+          }}
+        />
+      )}
+
+      {/* MODAL 3: Tantangan Koding Online Judge (Topik Sesuai Kuis) */}
+      {activeCodingProblem && (
+        <CodingArenaModal
+          isOpen={true}
+          problem={activeCodingProblem.problem}
+          sourceGame={activeCodingProblem.sourceGame}
+          onClose={() => setActiveCodingProblem(null)}
         />
       )}
     </div>

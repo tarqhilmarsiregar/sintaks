@@ -37,9 +37,9 @@ export default function NavigationTabs({
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap select-none ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap select-none ${
                 isActive
-                  ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-600/30'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-[#111827] text-slate-300 hover:bg-[#1e293b] hover:text-white border border-[#1f293d]'
               }`}
             >
@@ -55,9 +55,9 @@ export default function NavigationTabs({
         <button
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#111827] hover:bg-[#1e293b] border border-[#1f293d] text-slate-300 hover:text-white text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[#111827] hover:bg-[#1e293b] border border-[#1f293d] text-slate-300 hover:text-white text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : 'text-slate-400'}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-400' : 'text-slate-400'}`} />
           <span>Segarkan Data</span>
         </button>
       </div>

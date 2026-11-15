@@ -3,17 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArenaStore } from '@/lib/arena-store';
+import { SITE_CONFIG } from '@/config/site';
 import {
-  Trophy,
   Lock,
   Contact,
   Eye,
   EyeOff,
   ArrowRight,
   AlertCircle,
-  Sparkles,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 
 declare global {
@@ -30,11 +27,9 @@ export default function LoginPage() {
   const [nim, setNim] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isDemoBypass, setIsDemoBypass] = useState(false);
   const [isRecaptchaReady, setIsRecaptchaReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showDemoList, setShowDemoList] = useState(false);
 
   useEffect(() => {
     // Jika sudah ada sesi aktif, langsung arahkan ke portal masing-masing
@@ -95,7 +90,7 @@ export default function LoginPage() {
       process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ||
       '6Le4QR8uAAAAAJbAO6RYJuVmyABJO-HJFZHeWUsn';
 
-    let token = isDemoBypass ? 'demo-bypass-token' : null;
+    let token: string | null = null;
 
     // Ambil token eksekusi reCAPTCHA v3
     if (!token) {
@@ -158,59 +153,43 @@ export default function LoginPage() {
     }
   };
 
-  const fillQuickDemo = (demoNim: string, demoPass: string) => {
-    setNim(demoNim);
-    setPassword(demoPass);
-    setIsDemoBypass(true);
-    setError(null);
-  };
-
   return (
-    <div className="min-h-screen bg-[#070b14] text-[#f1f5f9] font-sans flex flex-col justify-between selection:bg-blue-600 selection:text-white">
-      {/* 1. Header STMIK TIME */}
-      <header className="px-6 sm:px-12 py-6">
+    <div className="min-h-dvh bg-[#070b14] text-[#f1f5f9] font-sans flex flex-col justify-between selection:bg-blue-600 selection:text-white">
+      {/* 1. Header Brand */}
+      <header className="px-4 sm:px-8 lg:px-12 py-4 sm:py-6 shrink-0">
         <div className="flex items-center gap-3.5">
           {/* STMIK TIME Official Shield Logo */}
           <img
             src="/logo-stmik-time.png"
             alt="Logo STMIK TIME"
-            className="w-11 h-11 object-contain drop-shadow-md"
+            className="w-10 h-10 object-contain drop-shadow-md"
           />
           <div>
-            <h1 className="font-bold text-white text-base tracking-wide leading-tight">
-              STMIK TIME
-            </h1>
-            <p className="text-xs text-slate-400 font-mono">
-              Programming (Problem Solving)
+            <div className="flex items-center gap-2">
+              <h1 className="font-extrabold text-white text-lg tracking-tight font-mono">
+                {SITE_CONFIG.brandMark}
+              </h1>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#131d33] border border-[#223354] text-blue-400 uppercase tracking-wider">
+                {SITE_CONFIG.subname}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-normal">
+              {SITE_CONFIG.institution.club}
             </p>
           </div>
         </div>
       </header>
 
       {/* 2. Main Content: 2 Columns */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6 w-full flex-1 flex items-center">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center w-full">
-          {/* Kolom Kiri: Hero & Code Window */}
-          <div className="lg:col-span-7 space-y-5">
-            {/* Live Contest Pill */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#131b2e] border border-amber-500/40 text-xs shadow-sm">
-              <Trophy className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-              <span className="text-amber-400 font-bold font-mono tracking-wide text-[11px] sm:text-xs">
-                LIVE ICPC SELECTION CONTEST #4
-              </span>
-              <span className="text-slate-500 font-mono">•</span>
-              <span className="text-slate-300 font-mono text-[11px] sm:text-xs">
-                Ends in 02:34:49
-              </span>
-            </div>
-
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-6 w-full flex-1 flex items-center justify-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center w-full">
+          {/* Kolom Kiri: Hero & Code Window (Desktop / Large Screens) */}
+          <div className="hidden lg:block lg:col-span-7 space-y-6">
             {/* Title & Subtitle */}
             <div>
               <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
-                Competitive
-              </h2>
-              <h2 className="text-3xl sm:text-5xl font-extrabold text-[#38bdf8] tracking-tight leading-tight">
-                Execution Matrix
+                Competitive{' '}
+                <span className="text-[#38bdf8] block">Execution Matrix</span>
               </h2>
               <p className="text-slate-400 text-xs sm:text-sm leading-relaxed mt-3 max-w-xl font-normal">
                 High-concurrency compilation sandbox with microsecond isolation, strict POSIX runtime barriers, and deterministic memory sandboxing for university algorithmic matches.
@@ -330,11 +309,11 @@ export default function LoginPage() {
           </div>
 
           {/* Kolom Kanan: Login Card */}
-          <div className="lg:col-span-5 w-full">
-            <div className="bg-[#0d1424] border border-[#1e293b] rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm max-w-md w-full ml-auto">
-              <h3 className="text-2xl font-bold text-white tracking-tight">
-                Masuk Arena Kontes
-              </h3>
+          <div className="w-full lg:col-span-5 flex justify-center lg:justify-end">
+            <div className="bg-[#0d1424] border border-[#1e293b] rounded-2xl p-5 sm:p-8 shadow-2xl backdrop-blur-sm max-w-md w-full">
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                Masuk ke {SITE_CONFIG.name}
+              </h2>
               <p className="text-xs sm:text-sm text-slate-400 mt-1 mb-6">
                 Gunakan Nomor Induk Mahasiswa (NIM) dan kata sandi Anda.
               </p>
@@ -349,81 +328,81 @@ export default function LoginPage() {
 
                 {/* Field 1: NIM */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  <label htmlFor="nim" className="block text-xs font-medium text-slate-300 mb-1.5">
                     Nomor Induk Mahasiswa (NIM) <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <Contact className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
+                      id="nim"
+                      name="nim"
                       type="text"
                       required
+                      autoComplete="username"
+                      inputMode="text"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="next"
                       value={nim}
                       onChange={(e) => setNim(e.target.value)}
                       placeholder="Masukkan NIM Anda"
-                      className="w-full bg-[#080d1a] border border-[#1e293b] rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      className="w-full bg-[#080d1a] border border-[#1e293b] rounded-xl pl-10 pr-4 py-2.5 sm:py-3 text-base sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                     />
                   </div>
                 </div>
 
                 {/* Field 2: Password */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  <label htmlFor="password" className="block text-xs font-medium text-slate-300 mb-1.5">
                     Kata Sandi <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
+                      id="password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      autoComplete="current-password"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="go"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Masukkan kata sandi akun"
-                      className="w-full bg-[#080d1a] border border-[#1e293b] rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      className="w-full bg-[#080d1a] border border-[#1e293b] rounded-xl pl-10 pr-11 py-2.5 sm:py-3 text-base sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-slate-400 hover:text-white rounded-lg transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
 
-                {isDemoBypass && (
-                  <div className="flex items-center justify-between w-full px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-[11px] font-mono text-cyan-300">
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Pintasan Demo Aktif: Siap Masuk</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsDemoBypass(false)}
-                      className="text-[10px] text-slate-400 hover:text-white underline ml-2"
-                    >
-                      Batal Demo
-                    </button>
-                  </div>
-                )}
-
-                {/* Submit Button */}
+                {/* Submit Button (Clean Solid Industrial) */}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold text-sm shadow-lg shadow-blue-600/30 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 mt-2"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 min-h-[44px] rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-sm shadow-sm transition-all active:scale-[0.99] touch-manipulation disabled:opacity-50 mt-2"
                 >
-                  <span>{loading ? 'Memverifikasi Keamanan & Masuk...' : 'Masuk ke Arena Kontes'}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>{loading ? 'Memverifikasi Keamanan & Masuk...' : `Masuk ke ${SITE_CONFIG.name} Arena`}</span>
+                  <ArrowRight className="w-4 h-4 shrink-0" />
                 </button>
 
                 {/* Google reCAPTCHA v3 Discrete Legal Attribution (ToS Compliant) */}
-                <p className="text-[10px] text-slate-500 text-center font-mono pt-1">
+                <p className="text-[11px] text-slate-500 text-center font-sans pt-1">
                   Dilindungi oleh reCAPTCHA •{' '}
                   <a
                     href="https://policies.google.com/privacy"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-slate-400 hover:text-cyan-400 underline transition-colors"
+                    className="text-slate-400 hover:text-blue-400 underline transition-colors"
                   >
                     Privasi
                   </a>{' '}
@@ -432,75 +411,20 @@ export default function LoginPage() {
                     href="https://policies.google.com/terms"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-slate-400 hover:text-cyan-400 underline transition-colors"
+                    className="text-slate-400 hover:text-blue-400 underline transition-colors"
                   >
                     Persyaratan
                   </a>
                 </p>
               </form>
-
-              {/* Collapsible Quick Demo Shortcut */}
-              <div className="mt-5 pt-3 border-t border-[#1e293b]">
-                <button
-                  type="button"
-                  onClick={() => setShowDemoList(!showDemoList)}
-                  className="w-full flex items-center justify-between text-[11px] font-mono text-slate-400 hover:text-slate-200 transition-colors py-1"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Pintasan Demo Akun STMIK TIME</span>
-                  </span>
-                  {showDemoList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-
-                {showDemoList && (
-                  <div className="grid grid-cols-2 gap-2 mt-2 pt-1 font-mono text-xs animate-fade-in">
-                    <button
-                      type="button"
-                      onClick={() => fillQuickDemo('2545001', '2545001')}
-                      className="p-2 rounded-lg bg-[#080d1a] hover:bg-[#131d33] border border-[#1e293b] text-left transition-colors"
-                    >
-                      <div className="text-white font-bold text-[11px] truncate">⚡ Cecilia_AlgoStar</div>
-                      <div className="text-[10px] text-slate-400">Kelas KAMIS (2545001)</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => fillQuickDemo('240101001', '240101001')}
-                      className="p-2 rounded-lg bg-[#080d1a] hover:bg-[#131d33] border border-[#1e293b] text-left transition-colors"
-                    >
-                      <div className="text-white font-bold text-[11px] truncate">🐉 Willson [ SHIRO ]</div>
-                      <div className="text-[10px] text-slate-400">Kelas JUMAT (240101001)</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => fillQuickDemo('250201002', '250201002')}
-                      className="p-2 rounded-lg bg-[#080d1a] hover:bg-[#131d33] border border-[#1e293b] text-left transition-colors"
-                    >
-                      <div className="text-white font-bold text-[11px] truncate">🦊 Indra_trll</div>
-                      <div className="text-[10px] text-slate-400">Rank #1 Leaderboard</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => fillQuickDemo('ADMIN', 'ADMIN')}
-                      className="p-2 rounded-lg bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 text-left text-purple-200 transition-colors"
-                    >
-                      <div className="text-purple-300 font-bold text-[11px] truncate">👑 Tarq Hilmar (Dosen)</div>
-                      <div className="text-[10px] text-purple-400">Role: ADMIN</div>
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
       </main>
 
       {/* 3. Footer */}
-      <footer className="text-center py-6 text-xs text-slate-500 font-mono">
-        © 2026 Programming (Problem Solving) Club STMIK TIME
+      <footer className="text-center py-4 sm:py-6 px-4 text-xs text-slate-500 font-sans shrink-0">
+        {SITE_CONFIG.copyright}
       </footer>
     </div>
   );

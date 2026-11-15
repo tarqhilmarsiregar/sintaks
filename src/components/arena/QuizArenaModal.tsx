@@ -216,11 +216,11 @@ export default function QuizArenaModal({
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-[#090d16]/95 backdrop-blur-md select-none"
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="bg-[#0b1120] border border-[#1f293d] rounded-2xl max-w-4xl w-full max-h-[95vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-[#0b1120] border border-[#1f293d] rounded-xl max-w-4xl w-full max-h-[95vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Top Header Arena Kuis */}
         <div className="p-3 sm:p-4 bg-[#0f172a] border-b border-[#1f293d] flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 text-xs font-mono text-cyan-400">
+            <div className="flex items-center gap-2 text-xs font-mono text-blue-400">
               <span>{game.id_game} • {game.ref_pertemuan}</span>
               <span className="text-slate-400">|</span>
               <span className="text-emerald-400">Arena Ujian Ketat</span>
@@ -293,7 +293,7 @@ export default function QuizArenaModal({
         {currentQ ? (
           <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono text-cyan-400 font-bold">
+              <span className="text-xs font-mono text-blue-400 font-bold">
                 Soal {currentQIndex + 1} dari {questions.length} ({currentQ.id_soal})
               </span>
               <span className="text-xs font-mono bg-blue-500/15 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded">
@@ -308,7 +308,7 @@ export default function QuizArenaModal({
 
             {/* Code Snippet Box */}
             {currentQ.cuplikan_kode && (
-              <pre className="p-3.5 bg-[#080d17] border border-[#1f293d] rounded-xl text-xs font-mono text-emerald-300 overflow-x-auto whitespace-pre selection:bg-none">
+              <pre className="p-3.5 bg-[#080d17] border border-[#1f293d] rounded-lg text-xs font-mono text-emerald-300 overflow-x-auto whitespace-pre selection:bg-none">
                 {currentQ.cuplikan_kode}
               </pre>
             )}
@@ -317,7 +317,7 @@ export default function QuizArenaModal({
             {currentQ.teks_hint && (
               <div className="pt-1">
                 {openedHints[currentQ.id_soal] ? (
-                  <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-xl text-xs text-amber-200 font-mono flex items-start gap-2">
+                  <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-lg text-xs text-amber-200 font-mono flex items-start gap-2">
                     <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                     <div>
                       <strong className="text-amber-300">Petunjuk (Hint):</strong> {currentQ.teks_hint}
@@ -355,7 +355,7 @@ export default function QuizArenaModal({
                       key={i}
                       disabled={isCurrentAnswered}
                       onClick={() => setSelectedOption(opt)}
-                      className={`w-full text-left p-3 rounded-xl text-xs sm:text-sm font-mono border transition-all flex items-center justify-between ${
+                      className={`w-full text-left p-3 rounded-lg text-xs sm:text-sm font-mono border transition-all flex items-center justify-between ${
                         selectedOption === opt
                           ? 'bg-blue-600/30 border-blue-400 text-white font-bold'
                           : 'bg-[#111827] border-[#1f293d] text-slate-300 hover:bg-[#162238]'
@@ -375,7 +375,7 @@ export default function QuizArenaModal({
                   value={selectedOption}
                   onChange={(e) => setSelectedOption(e.target.value)}
                   placeholder="Ketik jawaban singkat di sini..."
-                  className="w-full bg-[#111827] border border-[#1f293d] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#111827] border border-[#1f293d] rounded-lg px-4 py-2.5 text-xs sm:text-sm text-white font-mono focus:outline-none focus:border-blue-500"
                 />
               )}
             </div>
@@ -396,7 +396,7 @@ export default function QuizArenaModal({
             <button
               onClick={() => handleAnswer(false)}
               disabled={!selectedOption.trim() || isCurrentAnswered || isSubmitting}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs font-mono shadow-md shadow-emerald-600/25 transition-all"
+              className="flex items-center gap-2 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs font-mono shadow-sm transition-all"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Kunci & Kirim Jawaban (One-Shot)</span>

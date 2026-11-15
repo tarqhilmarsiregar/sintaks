@@ -32,11 +32,11 @@ export default function VerdictBadge({ verdict, showIcon = true, className = '' 
       case 'CE':
         return 'bg-slate-500/15 text-slate-400 border-slate-500/30';
       case 'RE':
-        return 'bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30';
+        return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
       case 'PENDING':
         return 'bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse';
       case 'RUNNING':
-        return 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30 animate-pulse';
+        return 'bg-sky-500/15 text-sky-400 border-sky-500/30 animate-pulse';
       default:
         return 'bg-gray-500/15 text-gray-400 border-gray-500/30';
     }
@@ -53,12 +53,12 @@ export default function VerdictBadge({ verdict, showIcon = true, className = '' 
           className={`w-1.5 h-1.5 rounded-full ${
             verdict === 'AC'
               ? 'bg-emerald-400'
-              : verdict === 'WA'
+              : verdict === 'WA' || verdict === 'RE'
               ? 'bg-rose-400'
               : verdict === 'TLE'
               ? 'bg-amber-400'
               : verdict === 'RUNNING' || verdict === 'PENDING'
-              ? 'bg-cyan-400 animate-ping'
+              ? 'bg-blue-400 animate-ping'
               : 'bg-slate-400'
           }`}
         />

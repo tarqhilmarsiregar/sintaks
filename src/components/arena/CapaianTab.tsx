@@ -3,7 +3,8 @@
 import React from 'react';
 import { User, Submission, Game } from '@/types/arena';
 import { calculateLevelInfo } from '@/lib/gamification';
-import { Award, Zap, Flame, Target, BookOpen, AlertCircle } from 'lucide-react';
+import UserAvatar from './UserAvatar';
+import { Award, Zap, Flame, Target, BookOpen, AlertCircle, Droplets } from 'lucide-react';
 
 interface CapaianTabProps {
   currentUser: User | null;
@@ -22,28 +23,28 @@ export default function CapaianTab({ currentUser, submissions, games }: CapaianT
       id: 'FIRST_BLOOD',
       title: 'First Blood',
       desc: 'Pemain pertama yang memecahkan soal di seluruh kelas (+25 XP)',
-      icon: '🩸',
+      icon: <Droplets className="w-6 h-6 text-rose-400" />,
       unlocked: currentUser.milestones_json.includes('FIRST_BLOOD')
     },
     {
       id: 'PERFECT_100',
       title: 'Sniper 100',
       desc: 'Meraih nilai akademik murni 100/100 tanpa penalti pindah tab',
-      icon: '🎯',
+      icon: <Target className="w-6 h-6 text-emerald-400" />,
       unlocked: currentUser.milestones_json.includes('PERFECT_100')
     },
     {
       id: 'SPEED_DEMON',
       title: 'Speed Demon',
       desc: 'Menjawab benar soal kuis dengan sisa waktu > 25 detik',
-      icon: '⚡',
+      icon: <Zap className="w-6 h-6 text-amber-400" />,
       unlocked: currentUser.milestones_json.includes('SPEED_DEMON')
     },
     {
       id: 'STREAK_3X',
       title: '3x On Fire',
       desc: 'Menjawab 3 soal benar secara berturut-turut (+50 XP)',
-      icon: '🔥',
+      icon: <Flame className="w-6 h-6 text-orange-400" />,
       unlocked: currentUser.milestones_json.includes('STREAK_3X')
     }
   ];
@@ -68,11 +69,11 @@ export default function CapaianTab({ currentUser, submissions, games }: CapaianT
   return (
     <div className="space-y-6">
       {/* 1. Level Progress Banner */}
-      <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl p-6 shadow-md">
+      <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-6 shadow-md">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{currentUser.avatar}</span>
+            <div className="flex items-center gap-2.5">
+              <UserAvatar user={currentUser} size="md" />
               <h3 className="font-extrabold text-white text-lg sm:text-xl font-mono">
                 {currentUser.codename}
               </h3>
@@ -103,7 +104,7 @@ export default function CapaianTab({ currentUser, submissions, games }: CapaianT
           </div>
           <div className="w-full h-3 rounded-full bg-[#162238] overflow-hidden p-0.5 border border-[#1f293d]">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-300 shadow-sm transition-all duration-500"
+              className="h-full rounded-full bg-amber-400 shadow-sm transition-all duration-500"
               style={{ width: `${levelInfo.progressPercent}%` }}
             />
           </div>
@@ -121,13 +122,15 @@ export default function CapaianTab({ currentUser, submissions, games }: CapaianT
           {milestones.map((ms) => (
             <div
               key={ms.id}
-              className={`p-4 rounded-xl border transition-all ${
+              className={`p-4 rounded-lg border transition-all ${
                 ms.unlocked
                   ? 'bg-[#0f172a] border-amber-500/40 shadow-sm'
                   : 'bg-[#080d17]/50 border-slate-800 opacity-60'
               }`}
             >
-              <div className="text-3xl mb-2">{ms.icon}</div>
+              <div className="w-10 h-10 rounded-lg bg-[#111827] border border-[#1e293b] flex items-center justify-center mb-3">
+                {ms.icon}
+              </div>
               <div className="font-bold text-white text-sm flex items-center justify-between">
                 <span>{ms.title}</span>
                 {ms.unlocked ? (
@@ -147,8 +150,8 @@ export default function CapaianTab({ currentUser, submissions, games }: CapaianT
       {/* 3. Diagnostik Ketuntasan Materi & Rekomendasi Modul */}
       <div>
         <h4 className="font-bold text-white text-base mb-3 flex items-center gap-2">
-          <Target className="w-4 h-4 text-cyan-400" />
-          <span>Diagnostik Ketuntasan & Rekomendasi Modul</span>
+          <Target className="w-4 h-4 text-blue-400" />
+          <span>Diagnostik Ketuntasan &amp; Rekomendasi Modul</span>
         </h4>
 
         <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl overflow-hidden shadow-sm">
@@ -199,9 +202,9 @@ export default function CapaianTab({ currentUser, submissions, games }: CapaianT
                       </td>
                       <td className="py-3 px-4 text-slate-300">
                         {avg < 80 ? (
-                          <div className="flex items-center gap-1.5 text-cyan-300">
-                            <BookOpen className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                            <span>Buka Modul & Colab Pertemuan 1</span>
+                          <div className="flex items-center gap-1.5 text-blue-300">
+                            <BookOpen className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            <span>Buka Modul &amp; Colab Pertemuan 1</span>
                           </div>
                         ) : (
                           <span className="text-emerald-400">✓ Siap Tantangan Hard / Team</span>

@@ -8,7 +8,7 @@ export default function ArenaPage() {
       <iframe
         src="/arena.html"
         className="w-full h-full border-0"
-        title="STMIK TIME — CP ARENA"
+        title="Sintaks — Competitive Programming Arena"
       />
     </div>
   );

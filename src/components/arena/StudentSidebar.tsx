@@ -4,6 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/types/arena';
 import { calculateLevelInfo } from '@/lib/gamification';
+import { SITE_CONFIG } from '@/config/site';
 import {
   LayoutDashboard,
   Trophy,
@@ -15,6 +16,7 @@ import {
   ShieldCheck,
   Flame,
   Code2,
+  X,
 } from 'lucide-react';
 
 export type StudentActiveMenu =
@@ -32,6 +34,8 @@ interface StudentSidebarProps {
   onMenuChange: (menu: StudentActiveMenu) => void;
   onLogout: () => void;
   totalGamesCount?: number;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export default function StudentSidebar({
@@ -39,6 +43,8 @@ export default function StudentSidebar({
   activeMenu,
   onMenuChange,
   onLogout,
+  isMobileOpen = false,
+  onCloseMobile,
 }: StudentSidebarProps) {
   const router = useRouter();
   const levelInfo = calculateLevelInfo(currentUser.total_xp || 0);
@@ -99,27 +105,55 @@ export default function StudentSidebar({
   ];
 
   return (
-    <aside className="w-full md:w-72 lg:w-80 xl:w-[328px] shrink-0 bg-[#090e1a] border-b md:border-b-0 md:border-r border-[#1e293b] flex flex-col md:fixed md:top-[61px] md:bottom-0 md:left-0 font-sans select-none z-30">
-      {/* 1. Header Profil Mahasiswa Terintegrasi (Clean & Minimalist Typography) */}
-      <div className="p-4 sm:p-5 border-b border-[#1e293b] bg-[#0c1222]/90 backdrop-blur-md relative overflow-hidden shrink-0">
-        {/* Glow ambient background effect */}
-        <div className="absolute -top-10 -right-10 w-28 h-28 bg-blue-600/10 rounded-full blur-2xl pointer-events-none" />
+    <>
+      {/* Mobile Drawer Backdrop Overlay */}
+      {isMobileOpen && (
+        <div
+          onClick={onCloseMobile}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-150"
+          aria-hidden="true"
+        />
+      )}
 
-        <div className="relative z-10 space-y-1.5">
-          {/* Header Row: Codename & Badge Kelas */}
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-extrabold text-white text-[15px] sm:text-base tracking-tight truncate">
-              {currentUser.codename}
-            </h3>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-[10.5px] font-mono text-cyan-300 font-semibold shrink-0 shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-              <span>Kelas {currentUser.klub_hari}</span>
+      {/* Main Sidebar Aside */}
+      <aside
+        className={`w-72 sm:w-80 md:w-72 lg:w-80 xl:w-[328px] shrink-0 bg-[#090e1a] border-r border-[#1e293b] flex flex-col font-sans select-none z-50 md:z-30 transition-transform duration-200 ease-in-out md:translate-x-0 ${
+          isMobileOpen
+            ? 'fixed inset-y-0 left-0 shadow-2xl translate-x-0 flex'
+            : 'fixed top-[61px] bottom-0 left-0 -translate-x-full md:translate-x-0 hidden md:flex'
+        }`}
+      >
+        {/* 1. Header Profil Mahasiswa Terintegrasi */}
+        <div className="p-4 sm:p-5 border-b border-[#1e293b] bg-[#0c1222]/90 shrink-0">
+          <div className="space-y-1.5">
+            {/* Header Row: Codename, Badge Kelas, & Mobile Close Button */}
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-extrabold text-white text-base tracking-tight truncate">
+                {currentUser.codename}
+              </h3>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-xs font-mono text-blue-300 font-semibold shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <span>Kelas {currentUser.klub_hari}</span>
+                </div>
+
+                {onCloseMobile && (
+                  <button
+                    type="button"
+                    onClick={onCloseMobile}
+                    className="md:hidden w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-[#151f33] active:scale-95 border border-[#1e293b] transition-all ml-1"
+                    aria-label="Tutup menu navigasi"
+                  >
+                    <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300" />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
           {/* Academic Identifier */}
-          <div className="text-[11.5px] text-slate-400 flex items-center gap-2 truncate">
-            <span className="font-mono text-slate-300 font-medium bg-[#111827] px-1.5 py-0.5 rounded border border-[#1e293b] text-[10px]">
+          <div className="text-xs text-slate-400 flex items-center gap-2 truncate">
+            <span className="font-mono text-slate-300 font-medium bg-[#111827] px-1.5 py-0.5 rounded border border-[#1e293b] text-[11px]">
               {currentUser.nim}
             </span>
             <span className="truncate">
@@ -135,27 +169,24 @@ export default function StudentSidebar({
               <Flame className="w-3.5 h-3.5 fill-amber-400/20 text-amber-400" />
               <span>Level {levelInfo.level}</span>
             </span>
-            <span className="text-[11px] font-mono text-slate-300 font-semibold">
+            <span className="text-xs font-mono text-slate-300 font-semibold">
               <span className="text-white font-bold">{currentUser.total_xp}</span>
               <span className="text-slate-500 font-normal"> / {levelInfo.nextLevelXP} XP</span>
             </span>
           </div>
 
-          {/* Progress Bar Container with subtle glow */}
-          <div className="w-full h-2.5 bg-[#060a14] rounded-full overflow-hidden border border-[#1e293b] p-0.5 relative shadow-inner">
+          {/* Progress Bar Container */}
+          <div className="w-full h-2 bg-[#060a14] rounded-full overflow-hidden border border-[#1e293b] p-0.5 relative">
             <div
-              className="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 rounded-full transition-all duration-500 relative"
+              className="h-full bg-blue-500 rounded-full transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
-            >
-              {/* Subtle shimmer tip at the end of progress */}
-              <span className="absolute right-0 top-0 bottom-0 w-2 bg-white/70 rounded-full blur-[1px]" />
-            </div>
+            />
           </div>
 
-          {/* Bottom Gamification Row: Micro Rank Badge & Glowing Goal XP */}
-          <div className="flex items-center justify-between text-[10.5px] font-mono mt-2 gap-2">
+          {/* Bottom Gamification Row: Micro Rank Badge & Goal XP */}
+          <div className="flex items-center justify-between text-xs font-mono mt-2 gap-2">
             {/* Rank Chip */}
-            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#111827] border border-cyan-500/20 text-cyan-300 font-semibold text-[10px] truncate max-w-[145px] shadow-sm">
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#111827] border border-blue-500/30 text-blue-300 font-semibold text-[11px] truncate max-w-[145px] shadow-sm">
               <span className="truncate">{levelInfo.tierBadge}</span>
             </div>
 
@@ -171,7 +202,7 @@ export default function StudentSidebar({
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         {/* Kategori A: KOMPETISI DOMJUDGE (LIVE ARENA) */}
         <div className="space-y-1">
-          <div className="px-3 py-1 text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase">
+          <div className="px-3 py-1 text-[11px] font-mono font-bold tracking-wider text-slate-400 uppercase">
             Kompetisi DOMjudge
           </div>
           <nav className="flex flex-col gap-1">
@@ -182,36 +213,36 @@ export default function StudentSidebar({
               return (
                 <button
                   key={item.id}
-                  onClick={() => onMenuChange(item.id)}
-                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-left transition-all duration-150 group relative ${
-                    isActive
-                      ? 'bg-gradient-to-r from-blue-600/90 to-indigo-600/90 text-white shadow-lg shadow-blue-600/20 font-semibold'
+                  onClick={() => {
+                    onMenuChange(item.id);
+                    if (onCloseMobile) onCloseMobile();
+                  }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-left transition-all duration-150 group relative ${isActive
+                      ? 'bg-blue-600 text-white shadow-sm font-semibold'
                       : 'text-slate-300 hover:bg-[#121829] hover:text-white'
-                  }`}
+                    }`}
                 >
                   {/* Active Indicator Bar Vertikal Halus di Kiri */}
                   {isActive && (
-                    <span className="absolute left-0 top-2 bottom-2 w-1 bg-cyan-400 rounded-r-full shadow-sm" />
+                    <span className="absolute left-0 top-2 bottom-2 w-1 bg-white rounded-r-full shadow-sm" />
                   )}
 
                   <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
-                      isActive
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${isActive
                         ? 'bg-white/20 text-white'
-                        : 'bg-[#111827] border border-[#1e293b] text-slate-400 group-hover:text-cyan-400 group-hover:border-cyan-500/30'
-                    }`}
+                        : 'bg-[#111827] border border-[#1e293b] text-slate-400 group-hover:text-blue-400 group-hover:border-blue-500/30'
+                      }`}
                   >
                     <Icon className="w-4 h-4" />
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className={`text-xs sm:text-[13px] leading-tight font-semibold tracking-wide ${isActive ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                    <div className={`text-xs sm:text-sm leading-tight font-semibold tracking-wide ${isActive ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
                       {item.label}
                     </div>
                     <div
-                      className={`text-[11px] leading-tight mt-0.5 ${
-                        isActive ? 'text-blue-100' : 'text-slate-400 font-mono'
-                      }`}
+                      className={`text-[11px] leading-tight mt-0.5 ${isActive ? 'text-blue-100' : 'text-slate-400 font-mono'
+                        }`}
                     >
                       {item.sublabel}
                     </div>
@@ -224,7 +255,7 @@ export default function StudentSidebar({
 
         {/* Kategori B: LATIHAN & EVALUASI KAMPUS */}
         <div className="space-y-1">
-          <div className="px-3 py-1 text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase">
+          <div className="px-3 py-1 text-[11px] font-mono font-bold tracking-wider text-slate-400 uppercase">
             Latihan &amp; Evaluasi Kampus
           </div>
           <nav className="flex flex-col gap-1">
@@ -235,36 +266,36 @@ export default function StudentSidebar({
               return (
                 <button
                   key={item.id}
-                  onClick={() => onMenuChange(item.id)}
-                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-left transition-all duration-150 group relative ${
-                    isActive
-                      ? 'bg-gradient-to-r from-blue-600/90 to-indigo-600/90 text-white shadow-lg shadow-blue-600/20 font-semibold'
+                  onClick={() => {
+                    onMenuChange(item.id);
+                    if (onCloseMobile) onCloseMobile();
+                  }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-left transition-all duration-150 group relative ${isActive
+                      ? 'bg-blue-600 text-white shadow-sm font-semibold'
                       : 'text-slate-300 hover:bg-[#121829] hover:text-white'
-                  }`}
+                    }`}
                 >
                   {/* Active Indicator Bar Vertikal Halus di Kiri */}
                   {isActive && (
-                    <span className="absolute left-0 top-2 bottom-2 w-1 bg-cyan-400 rounded-r-full shadow-sm" />
+                    <span className="absolute left-0 top-2 bottom-2 w-1 bg-white rounded-r-full shadow-sm" />
                   )}
 
                   <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
-                      isActive
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${isActive
                         ? 'bg-white/20 text-white'
-                        : 'bg-[#111827] border border-[#1e293b] text-slate-400 group-hover:text-cyan-400 group-hover:border-cyan-500/30'
-                    }`}
+                        : 'bg-[#111827] border border-[#1e293b] text-slate-400 group-hover:text-blue-400 group-hover:border-blue-500/30'
+                      }`}
                   >
                     <Icon className="w-4 h-4" />
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className={`text-xs sm:text-[13px] leading-tight font-semibold tracking-wide ${isActive ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                    <div className={`text-xs sm:text-sm leading-tight font-semibold tracking-wide ${isActive ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
                       {item.label}
                     </div>
                     <div
-                      className={`text-[11px] leading-tight mt-0.5 ${
-                        isActive ? 'text-blue-100' : 'text-slate-400 font-mono'
-                      }`}
+                      className={`text-[11px] leading-tight mt-0.5 ${isActive ? 'text-blue-100' : 'text-slate-400 font-mono'
+                        }`}
                     >
                       {item.sublabel}
                     </div>
@@ -278,7 +309,7 @@ export default function StudentSidebar({
         {/* Kategori C: PANEL DOSEN PEMBINA (jika role ADMIN) */}
         {currentUser.role === 'ADMIN' && (
           <div className="space-y-1 pt-1">
-            <div className="px-3 py-1 text-[10px] font-mono font-bold tracking-wider text-amber-500/80 uppercase">
+            <div className="px-3 py-1 text-[11px] font-mono font-bold tracking-wider text-amber-500/80 uppercase">
               Panel Pembina
             </div>
             <button
@@ -308,14 +339,15 @@ export default function StudentSidebar({
           <span>Keluar (Logout)</span>
         </button>
 
-        <div className="px-1 flex items-center justify-between text-[10px] font-mono text-slate-500">
-          <span>STMIK TIME • CP Arena</span>
+        <div className="px-1 flex items-center justify-between text-xs font-mono text-slate-500">
+          <span>{SITE_CONFIG.name}</span>
           <span className="text-emerald-400/90 flex items-center gap-1 font-semibold">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            v2.1 Connected
+            v{SITE_CONFIG.version} Online
           </span>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

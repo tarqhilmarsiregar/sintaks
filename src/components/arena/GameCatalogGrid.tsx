@@ -2,7 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { Game, Submission, User, ICPC_PROBLEMS_DEF } from '@/types/arena';
-import { Search, Clock, Target, CheckCircle2, Lock, BookOpen, Play } from 'lucide-react';
+import { Problem } from '@/types';
+import { getCodingProblemForGame } from '@/lib/problem-mapping';
+import { Search, Clock, Target, CheckCircle2, Lock, BookOpen, Play, Code2 } from 'lucide-react';
 
 interface GameCatalogGridProps {
   games: Game[];
@@ -10,6 +12,7 @@ interface GameCatalogGridProps {
   currentUser: User | null;
   onOpenGame: (game: Game) => void;
   onViewEditorial: (game: Game, submission: Submission) => void;
+  onStartCoding?: (problem: Problem, game: Game) => void;
 }
 
 export default function GameCatalogGrid({
@@ -17,7 +20,8 @@ export default function GameCatalogGrid({
   submissions,
   currentUser,
   onOpenGame,
-  onViewEditorial
+  onViewEditorial,
+  onStartCoding,
 }: GameCatalogGridProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -151,7 +155,7 @@ export default function GameCatalogGrid({
               : userStatus === 'UPCOMING'
               ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
               : userStatus === 'FROZEN'
-              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
               : 'bg-slate-700/40 text-slate-400 border-slate-600/40';
 
           const totalSoal = game.total_soal || 4;
@@ -174,7 +178,7 @@ export default function GameCatalogGrid({
                         </span>
                       ) : null;
                     })()}
-                    <span className="text-xs font-mono text-cyan-400 font-semibold">
+                    <span className="text-xs font-mono text-blue-400 font-semibold">
                       {game.id_game} • {game.ref_pertemuan} ({game.mode_game})
                     </span>
                   </div>
@@ -205,7 +209,7 @@ export default function GameCatalogGrid({
                     {totalSoal} Soal
                   </span>
                   <span className="flex items-center gap-1 bg-[#162032] px-2 py-1 rounded border border-[#1f293d]">
-                    <Clock className="w-3 h-3 text-cyan-400" />
+                    <Clock className="w-3 h-3 text-slate-400" />
                     {game.durasi_total_menit}m ({game.durasi_per_soal_detik}s/soal)
                   </span>
                   <span className="flex items-center gap-1 bg-[#162032] px-2 py-1 rounded border border-[#1f293d]">
@@ -213,6 +217,19 @@ export default function GameCatalogGrid({
                     Lulus ≥{game.min_nilai_lulus}
                   </span>
                 </div>
+
+                {/* Target Problem Solving Terkait */}
+                {(() => {
+                  const prob = getCodingProblemForGame(game.id_game);
+                  if (!prob) return null;
+                  return (
+                    <div className="mt-2.5 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0d1424] border border-[#1e293b] text-[11px] font-mono text-slate-300">
+                      <Code2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <span className="text-slate-400">Target Coding:</span>
+                      <span className="text-white font-medium truncate" title={prob.title}>{prob.title}</span>
+                    </div>
+                  );
+                })()}
 
                 {/* Ketuntasan Soal Text */}
                 <div className="mt-3.5 text-xs font-mono flex items-center justify-between">
@@ -249,20 +266,35 @@ export default function GameCatalogGrid({
               {/* Action Buttons */}
               <div className="mt-4 pt-2">
                 {sub ? (
-                  <button
-                    onClick={() => onViewEditorial(game, sub)}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-[#132238] hover:bg-[#1a2f4d] border border-blue-500/30 text-cyan-300 font-bold text-xs shadow-sm transition-colors"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>Selesai — Lihat Hasil & Editorial</span>
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => onViewEditorial(game, sub)}
+                      className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-[#131d33] hover:bg-[#1a2942] border border-[#223354] text-slate-200 hover:text-white font-mono font-semibold text-xs shadow-sm transition-colors"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Hasil &amp; Pembahasan Kuis</span>
+                    </button>
+
+                    {getCodingProblemForGame(game.id_game) && onStartCoding && (
+                      <button
+                        onClick={() => {
+                          const prob = getCodingProblemForGame(game.id_game);
+                          if (prob) onStartCoding(prob, game);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/40 text-blue-300 hover:text-white font-mono font-semibold text-xs shadow-sm transition-colors"
+                      >
+                        <Code2 className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Tantangan Koding Online Judge</span>
+                      </button>
+                    )}
+                  </div>
                 ) : userStatus === 'OPEN' ? (
                   <button
                     onClick={() => onOpenGame(game)}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-600/25 transition-all"
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-sm transition-colors"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>🎮 Mulai Game Sekarang</span>
+                    <span>Kerjakan Paket Kuis</span>
                   </button>
                 ) : (
                   <div className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-[#0f172a] border border-[#1e293b] text-slate-500 font-semibold text-xs select-none">

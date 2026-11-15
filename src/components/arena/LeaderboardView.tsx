@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { LeaderboardPlayer, Team, KlubHari, User, ICPC_PROBLEMS_DEF } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
+import UserAvatar from './UserAvatar';
 import {
   Trophy,
   Swords,
@@ -16,7 +17,8 @@ import {
   HelpCircle,
   Table,
   LayoutGrid,
-  Sparkles,
+  Tag,
+  Users,
   Info
 } from 'lucide-react';
 
@@ -63,9 +65,9 @@ export default function LeaderboardView({
   return (
     <div className="space-y-6">
       {/* 1. Header & Filter Bar */}
-      <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 sm:p-6 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 font-bold mb-1">
+          <div className="flex items-center gap-2 text-xs font-mono text-blue-400 font-bold mb-1">
             <Trophy className="w-4 h-4 text-amber-400" />
             <span>SCOREBOARD ICPC &amp; MATRIKS PENJURIAN DOMJUDGE</span>
           </div>
@@ -82,22 +84,22 @@ export default function LeaderboardView({
           {/* Toggle Freeze Simulator */}
           <button
             onClick={() => setIsFrozen(!isFrozen)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
               isFrozen
-                ? 'bg-cyan-950 border-cyan-400 text-cyan-300 shadow-cyan-900/50'
+                ? 'bg-sky-950/60 border-sky-400 text-sky-200'
                 : 'bg-[#080d1a] border-slate-700 text-slate-400 hover:text-white'
             }`}
             title="Klik untuk mengaktifkan atau menonaktifkan simulasi Scoreboard Freeze"
           >
-            <Snowflake className={`w-3.5 h-3.5 ${isFrozen ? 'animate-spin text-cyan-300' : 'text-slate-400'}`} />
+            <Snowflake className={`w-3.5 h-3.5 ${isFrozen ? 'animate-spin text-sky-300' : 'text-slate-400'}`} />
             <span>{isFrozen ? 'Scoreboard FROZEN' : 'Scoreboard LIVE'}</span>
           </button>
 
           {/* View Tab Buttons */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-[#080d1a] border border-[#1e293b]">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-[#080d1a] border border-[#1e293b]">
             <button
               onClick={() => setActiveTab('matrix')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'matrix'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                   : 'text-slate-400 hover:text-white'
@@ -108,7 +110,7 @@ export default function LeaderboardView({
             </button>
             <button
               onClick={() => setActiveTab('podium')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'podium'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                   : 'text-slate-400 hover:text-white'
@@ -120,12 +122,12 @@ export default function LeaderboardView({
           </div>
 
           {/* Filter Buttons Kelas */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-[#080d1a] border border-[#1e293b]">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-[#080d1a] border border-[#1e293b]">
             {(['KAMIS', 'JUMAT', 'ALL'] as const).map((filterVal) => (
               <button
                 key={filterVal}
                 onClick={() => handleFilter(filterVal)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-md text-xs font-mono font-bold transition-all ${
                   selectedFilter === filterVal
                     ? 'bg-slate-700 text-white shadow'
                     : 'text-slate-400 hover:text-white'
@@ -142,20 +144,20 @@ export default function LeaderboardView({
       <div
         className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono transition-all ${
           isFrozen
-            ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-200 shadow-lg shadow-cyan-950/20'
+            ? 'bg-sky-950/40 border-sky-500/40 text-sky-200'
             : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
         }`}
       >
         <div className="flex items-center gap-2">
           {isFrozen ? (
-            <Snowflake className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <Snowflake className="w-4 h-4 text-sky-300 animate-pulse" />
           ) : (
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
           )}
           <span>
             {isFrozen ? (
               <>
-                <strong className="text-cyan-300">SCOREBOARD FROZEN (15 Menit Terakhir Dikunci):</strong> Submisi terbaru ditandai pending (<strong>?</strong>) hingga upacara pengumuman pemenang!
+                <strong className="text-sky-300">SCOREBOARD FROZEN (15 Menit Terakhir Dikunci):</strong> Submisi terbaru ditandai pending (<strong>?</strong>) hingga upacara pengumuman pemenang!
               </>
             ) : (
               <>
@@ -173,7 +175,7 @@ export default function LeaderboardView({
       {/* 2. Problem Balloon Legend Bar */}
       <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-3.5">
         <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <Tag className="w-3.5 h-3.5 text-amber-400" />
           <span>Legenda Balon Problem Set A–Z (Standar DOMjudge):</span>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -238,7 +240,7 @@ export default function LeaderboardView({
                         key={row.nim}
                         className={`transition-colors ${
                           isMyRow
-                            ? 'bg-blue-950/30 hover:bg-blue-950/40 border-l-4 border-l-cyan-400'
+                            ? 'bg-blue-950/30 hover:bg-blue-950/40 border-l-4 border-l-blue-500'
                             : 'hover:bg-[#0e1628]'
                         }`}
                       >
@@ -262,14 +264,14 @@ export default function LeaderboardView({
                         {/* 2. Peserta / Tim */}
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2.5">
-                            <span className="text-lg shrink-0">{row.avatar || '⚡'}</span>
+                            <UserAvatar user={{ nim: row.nim, codename: row.displayName }} size="xs" />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-extrabold text-white text-xs truncate">
                                   {row.displayName}
                                 </span>
                                 {isMyRow && (
-                                  <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[9px] font-bold">
+                                  <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-bold">
                                     ANDA
                                   </span>
                                 )}
@@ -426,9 +428,9 @@ export default function LeaderboardView({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Juara 2 (Perak) */}
               {top2 && (
-                <div className="rounded-2xl bg-gradient-to-b from-slate-800/40 via-[#0b1120] to-[#080d1a] border border-slate-700/50 p-5 shadow-xl text-center relative overflow-hidden flex flex-col items-center justify-center order-2 md:order-1">
+                <div className="rounded-xl bg-[#0b1120] border border-slate-700/50 p-5 shadow-xl text-center relative overflow-hidden flex flex-col items-center justify-center order-2 md:order-1">
                   <span className="text-3xl mb-1">🥈</span>
-                  <div className="w-16 h-16 rounded-2xl bg-slate-700/20 border border-slate-600/40 flex items-center justify-center text-3xl shadow-md my-2">
+                  <div className="w-16 h-16 rounded-xl bg-slate-700/20 border border-slate-600/40 flex items-center justify-center text-3xl shadow-md my-2">
                     {top2.avatar || '⚡'}
                   </div>
                   <div className="font-extrabold text-white text-sm truncate max-w-full">
@@ -440,7 +442,7 @@ export default function LeaderboardView({
                   <div className="mt-3 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-xs font-mono text-slate-200 font-bold">
                     {top2.total_xp} XP
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-1">
+                  <div className="text-[11px] text-slate-400 font-mono mt-1">
                     Lv.{top2.level} • Nilai: {top2.rata_nilai}
                   </div>
                 </div>
@@ -448,10 +450,9 @@ export default function LeaderboardView({
 
               {/* Juara 1 (Emas - Center, Highlighted) */}
               {top1 && (
-                <div className="rounded-2xl bg-gradient-to-b from-amber-950/40 via-[#0d1527] to-[#080d1a] border-2 border-amber-500/60 p-6 shadow-2xl text-center relative overflow-hidden flex flex-col items-center justify-center order-1 md:order-2 md:-translate-y-2">
-                  <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent" />
-                  <span className="text-4xl mb-1 animate-bounce">👑</span>
-                  <div className="w-20 h-20 rounded-2xl bg-amber-500/20 border-2 border-amber-400/50 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/20 my-2">
+                <div className="rounded-xl bg-[#0d1527] border-2 border-amber-500/50 p-6 shadow-2xl text-center relative overflow-hidden flex flex-col items-center justify-center order-1 md:order-2 md:-translate-y-2">
+                  <span className="text-4xl mb-1">👑</span>
+                  <div className="w-20 h-20 rounded-xl bg-amber-500/15 border-2 border-amber-400/40 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/10 my-2">
                     {top1.avatar || '👑'}
                   </div>
                   <div className="font-black text-amber-300 text-base tracking-wide truncate max-w-full">
@@ -463,7 +464,7 @@ export default function LeaderboardView({
                   <div className="mt-3 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-sm font-mono text-amber-300 font-black shadow-lg">
                     {top1.total_xp} XP
                   </div>
-                  <div className="text-[10px] text-amber-400/80 font-mono mt-1 font-semibold">
+                  <div className="text-[11px] text-amber-400 font-mono mt-1 font-semibold">
                     Lv.{top1.level} Champion • Nilai Rata: {top1.rata_nilai}
                   </div>
                 </div>
@@ -471,9 +472,9 @@ export default function LeaderboardView({
 
               {/* Juara 3 (Perunggu) */}
               {top3 && (
-                <div className="rounded-2xl bg-gradient-to-b from-amber-950/20 via-[#0b1120] to-[#080d1a] border border-amber-700/40 p-5 shadow-xl text-center relative overflow-hidden flex flex-col items-center justify-center order-3">
+                <div className="rounded-xl bg-[#0b1120] border border-amber-700/40 p-5 shadow-xl text-center relative overflow-hidden flex flex-col items-center justify-center order-3">
                   <span className="text-3xl mb-1">🥉</span>
-                  <div className="w-16 h-16 rounded-2xl bg-amber-900/20 border border-amber-700/40 flex items-center justify-center text-3xl shadow-md my-2">
+                  <div className="w-16 h-16 rounded-xl bg-amber-900/20 border border-amber-700/40 flex items-center justify-center text-3xl shadow-md my-2">
                     {top3.avatar || '⚡'}
                   </div>
                   <div className="font-extrabold text-white text-sm truncate max-w-full">
@@ -482,10 +483,10 @@ export default function LeaderboardView({
                   <div className="text-[11px] font-mono text-slate-400">
                     {top3.nim} • Kelas {top3.klub_hari}
                   </div>
-                  <div className="mt-3 px-3 py-1 rounded-full bg-amber-950/80 border border-amber-800/60 text-xs font-mono text-amber-300 font-bold">
+                  <div className="mt-3 px-3 py-1 rounded-full bg-amber-900/40 border border-amber-800/40 text-xs font-mono text-amber-300 font-bold">
                     {top3.total_xp} XP
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-1">
+                  <div className="text-[11px] text-slate-400 font-mono mt-1">
                     Lv.{top3.level} • Nilai: {top3.rata_nilai}
                   </div>
                 </div>
@@ -496,7 +497,7 @@ export default function LeaderboardView({
           {/* Grid Dua Kolom: Peringkat Individu + Klasemen Tim */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Kolom Kiri: Peringkat Individu */}
-            <div className="lg:col-span-8 bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="lg:col-span-8 bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 shadow-xl space-y-4">
               <div className="flex items-center justify-between border-b border-[#1e293b] pb-3">
                 <div className="flex items-center gap-2">
                   <Medal className="w-4 h-4 text-amber-400" />
@@ -515,7 +516,7 @@ export default function LeaderboardView({
                   return (
                     <div
                       key={p.nim}
-                      className={`flex items-center justify-between py-3 px-3 rounded-xl transition-colors font-mono ${
+                      className={`flex items-center justify-between py-3 px-3 rounded-lg transition-colors font-mono ${
                         isMe
                           ? 'bg-blue-950/40 border border-blue-500/30'
                           : 'hover:bg-[#0e1628]'
@@ -525,7 +526,7 @@ export default function LeaderboardView({
                         <span className="w-6 text-center text-xs font-bold text-slate-400">
                           #{idx + 1}
                         </span>
-                        <div className="w-9 h-9 rounded-xl bg-[#111827] border border-[#1f293d] flex items-center justify-center text-lg">
+                        <div className="w-9 h-9 rounded-lg bg-[#111827] border border-[#1f293d] flex items-center justify-center text-lg">
                           {p.avatar || '⚡'}
                         </div>
                         <div>
@@ -561,9 +562,9 @@ export default function LeaderboardView({
             </div>
 
             {/* Kolom Kanan: Klasemen Team Battle */}
-            <div className="lg:col-span-4 bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="lg:col-span-4 bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 shadow-xl space-y-4">
               <div className="flex items-center gap-2 border-b border-[#1e293b] pb-3">
-                <Swords className="w-4 h-4 text-cyan-400" />
+                <Swords className="w-4 h-4 text-blue-400" />
                 <h3 className="font-bold text-white text-sm tracking-wide">
                   Klasemen Team Battle
                 </h3>
@@ -590,34 +591,35 @@ export default function LeaderboardView({
                           key={team.id_tim}
                           className={`p-3 rounded-xl border transition-colors text-xs font-mono ${
                             isMyTeam
-                              ? 'bg-[#0f1b33] border-cyan-500/50 shadow-md shadow-cyan-950/40'
-                              : 'bg-[#080d1a] border-[#1e293b] hover:border-cyan-500/30'
+                              ? 'bg-[#0f1b33] border-blue-500/50 shadow-sm'
+                              : 'bg-[#080d1a] border-[#1e293b] hover:border-blue-500/30'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="font-bold text-white text-xs truncate flex items-center gap-1.5">
                               <span>#{idx + 1} {team.nama_tim}</span>
                               {isMyTeam && (
-                                <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[9px] font-bold">
+                                <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-bold">
                                   TIM ANDA
                                 </span>
                               )}
                             </div>
-                            <div className="text-cyan-400 font-extrabold shrink-0">
+                            <div className="text-blue-400 font-extrabold shrink-0">
                               {team.total_skor_tim} XP
                             </div>
                           </div>
                           <div className="text-[10px] text-slate-400 flex items-center justify-between">
                             <span>Kelas {team.klub_hari} • {team.daftar_nim_json.length}/3 Anggota</span>
                             {team.kode_gabung && (
-                              <span className="text-[9px] text-slate-500 font-mono">
+                              <span className="text-[10px] text-slate-500 font-mono">
                                 [{team.kode_gabung}]
                               </span>
                             )}
                           </div>
                           {team.daftar_nama_json.length > 0 && (
-                            <div className="text-[9px] text-slate-400 truncate mt-1 pt-1 border-t border-slate-800/60">
-                              👥 {team.daftar_nama_json.map(n => n.split(' (')[0]).join(', ')}
+                            <div className="text-[10px] text-slate-400 truncate mt-1 pt-1 border-t border-slate-800/60 flex items-center gap-1">
+                              <Users className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="truncate">{team.daftar_nama_json.map(n => n.split(' (')[0]).join(', ')}</span>
                             </div>
                           )}
                         </div>

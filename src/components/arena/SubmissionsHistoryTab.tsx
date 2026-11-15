@@ -39,11 +39,11 @@ export default function SubmissionsHistoryTab({
   return (
     <div className="space-y-6 font-sans">
       {/* Header Banner */}
-      <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span className="text-[11px] font-mono font-bold text-cyan-400 uppercase tracking-wider">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="text-[11px] font-mono font-bold text-emerald-400 uppercase tracking-wider">
               DOMjudge Live Verdict Engine
             </span>
           </div>
@@ -56,10 +56,10 @@ export default function SubmissionsHistoryTab({
         </div>
 
         {/* Filter Toggle */}
-        <div className="flex items-center gap-1.5 bg-[#060a14] p-1 rounded-xl border border-[#1e293b] self-start sm:self-auto shrink-0 font-mono text-xs">
+        <div className="flex items-center gap-1.5 bg-[#060a14] p-1 rounded-lg border border-[#1e293b] self-start sm:self-auto shrink-0 font-mono text-xs">
           <button
             onClick={() => setFilterMode('MY')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
               filterMode === 'MY'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-white'
@@ -69,7 +69,7 @@ export default function SubmissionsHistoryTab({
           </button>
           <button
             onClick={() => setFilterMode('CLASS')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
               filterMode === 'CLASS'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-white'
@@ -81,7 +81,7 @@ export default function SubmissionsHistoryTab({
       </div>
 
       {/* Submissions List Table */}
-      <div className="bg-[#0b1120] border border-[#1e293b] rounded-2xl shadow-xl overflow-hidden">
+      <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl shadow-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
             <thead className="bg-[#070b14] text-slate-400 border-b border-[#1e293b]">

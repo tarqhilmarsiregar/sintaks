@@ -71,7 +71,39 @@ export async function POST(req: NextRequest) {
           challenge_ts: data.challenge_ts,
         });
       } else {
-        const errorCodes = data['error-codes'] || [];
+        const errorCodes: string[] = data['error-codes'] || [];
+
+        // Toleransi pengujian multi-device di jaringan lokal (LAN / Wi-Fi Smartphone)
+        const isDev = process.env.NODE_ENV !== 'production';
+        const hostHeader = req.headers.get('host') || '';
+        const referer = req.headers.get('referer') || '';
+
+        // Deteksi apakah akses berasal dari localhost atau subnet IP privat (192.168.x, 10.x, 172.16-31.x)
+        const isLocalOrPrivateNetwork =
+          hostHeader.includes('localhost') ||
+          hostHeader.includes('127.0.0.1') ||
+          /^192\.168\./.test(hostHeader) ||
+          /^10\./.test(hostHeader) ||
+          /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostHeader) ||
+          referer.includes('localhost') ||
+          referer.includes('127.0.0.1') ||
+          /192\.168\./.test(referer) ||
+          /10\./.test(referer);
+
+        if (isDev && isLocalOrPrivateNetwork) {
+          console.warn(
+            `[DEV RECAPTCHA TOLERANCE] Verifikasi diloloskan untuk pengujian lokal/LAN smartphone (${hostHeader}). Google error:`,
+            errorCodes
+          );
+          return NextResponse.json({
+            success: true,
+            score: 0.9,
+            devLanBypass: true,
+            hostname: hostHeader,
+            warning: 'Local dev tolerance enabled for LAN / mobile testing.',
+          });
+        }
+
         return NextResponse.json(
           {
             success: false,

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { LeaderboardPlayer, Team, KlubHari } from '@/types/arena';
+import UserAvatar from './UserAvatar';
 import { Trophy, Swords } from 'lucide-react';
 
 interface LeaderboardSidebarProps {
@@ -79,7 +80,7 @@ export default function LeaderboardSidebar({
                     <span className="w-5 text-center font-bold text-slate-300 shrink-0">
                       {rankBadge}
                     </span>
-                    <span className="text-sm shrink-0">{p.avatar || '⚡'}</span>
+                    <UserAvatar user={{ codename: p.codename, nim: p.nim }} size="xs" />
                     <div className="truncate">
                       <div className="font-bold text-white truncate text-[11px]">
                         {p.codename}{' '}
@@ -106,7 +107,7 @@ export default function LeaderboardSidebar({
       {/* 2. Leaderboard Team Battle Card */}
       <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-3 border-b border-[#1f293d] pb-2.5">
-          <Swords className="w-4 h-4 text-cyan-400" />
+          <Swords className="w-4 h-4 text-blue-400" />
           <h4 className="font-bold text-white text-xs sm:text-sm tracking-wide">
             Leaderboard Team Battle
           </h4>
@@ -134,7 +135,7 @@ export default function LeaderboardSidebar({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-cyan-400 font-bold">{team.total_skor_tim} XP</div>
+                    <div className="text-blue-400 font-bold">{team.total_skor_tim} XP</div>
                   </div>
                 </div>
               ))}
