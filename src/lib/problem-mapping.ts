@@ -1,11 +1,19 @@
 import { Problem } from '@/types';
 import { MOCK_PROBLEMS } from '@/lib/mock-data';
+import { ArenaStore } from '@/lib/arena-store';
 
 /**
- * Mapping topik paket soal kuis (Game G1-G7) ke tantangan Problem Solving Coding (Online Judge).
- * Menghubungkan teori pemahaman yang diuji di kuis dengan implementasi kode algoritma riil.
+ * Mapping topik paket soal kuis (Game G1-G7, G8...) ke tantangan Problem Solving Coding (Online Judge).
+ * Mendukung pembacaan dinamis dari ArenaStore jika telah dikonfigurasi oleh Admin.
  */
 export function getCodingProblemForGame(gameId: string): Problem {
+  try {
+    const dynamicProb = ArenaStore.getCodingProblemForGame(gameId);
+    if (dynamicProb) return dynamicProb;
+  } catch {
+    // fallback to static lookup if storage uninitialized
+  }
+
   const mapping: Record<string, string> = {
     G1: 'penjumlahan-dua-bilangan-prima', // Pemanasan Logika & Big-O -> Math / Prime Search O(N)
     G2: 'rotasi-matriks-spiral-terbalik', // Fast I/O & Presisi Python -> Matrix Simulation & Fast I/O

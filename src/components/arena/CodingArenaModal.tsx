@@ -5,6 +5,7 @@ import { Problem, TestCase, SupportedLanguage } from '@/types';
 import { Game } from '@/types/arena';
 import CodeEditor from '@/components/CodeEditor';
 import { EvaluationResult } from '@/lib/judge/evaluator';
+import MathText from '@/components/common/MathText';
 import {
   X,
   Clock,
@@ -122,9 +123,10 @@ export default function CodingArenaModal({
             <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase">
               Deskripsi Masalah
             </h3>
-            <div className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans whitespace-pre-line">
-              {problem.statement_md}
-            </div>
+            <MathText
+              content={problem.statement_md}
+              className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans"
+            />
           </section>
 
           {/* Format Masukan */}
@@ -132,9 +134,10 @@ export default function CodingArenaModal({
             <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase">
               Format Masukan
             </h3>
-            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans bg-[#080d1a] border border-[#1e293b] p-3 rounded-lg whitespace-pre-line">
-              {problem.input_format}
-            </div>
+            <MathText
+              content={problem.input_format}
+              className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans bg-[#080d1a] border border-[#1e293b] p-3 rounded-lg"
+            />
           </section>
 
           {/* Format Keluaran */}
@@ -142,9 +145,10 @@ export default function CodingArenaModal({
             <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase">
               Format Keluaran
             </h3>
-            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans bg-[#080d1a] border border-[#1e293b] p-3 rounded-lg whitespace-pre-line">
-              {problem.output_format}
-            </div>
+            <MathText
+              content={problem.output_format}
+              className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans bg-[#080d1a] border border-[#1e293b] p-3 rounded-lg"
+            />
           </section>
 
           {/* Batasan (Constraints) */}
@@ -152,9 +156,10 @@ export default function CodingArenaModal({
             <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase">
               Batasan (Constraints)
             </h3>
-            <div className="text-xs font-mono text-amber-300/90 leading-relaxed bg-[#080d1a] border border-[#1e293b] p-3 rounded-lg whitespace-pre-line">
-              {problem.constraints}
-            </div>
+            <MathText
+              content={problem.constraints}
+              className="text-xs font-mono text-amber-300/90 leading-relaxed bg-[#080d1a] border border-[#1e293b] p-3 rounded-lg"
+            />
           </section>
 
           {/* Contoh Kasus Uji (Sample Testcases) */}

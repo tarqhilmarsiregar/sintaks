@@ -546,3 +546,250 @@ File antarmuka: `gas/Index.html` & `public/arena.html`.
   - TypeScript Compilation: **0 Error** via `npx tsc --noEmit`.
   - Verification Suite: **124/124 Tests PASS (100%)** via `npm test`.
 
+
+---
+
+### Bagian 28: Sprint 7 — Sinkronisasi Penuh Antarmuka Admin & Portal Mahasiswa (Zero AI Slop)
+- **Konteks & Kebutuhan:**
+  - Menghilangkan inkonsistensi visual, menghapus popup browser bawaan (`confirm()`) pada aksi destruktif mahasiswa & kontes, serta mengimplementasikan modal dialog industrial slate `#0c1222`.
+  - Mengatasi bug z-index modal dialog yang terpotong di pojok kiri atas viewport dengan memanfaatkan [ModalPortal.tsx](file:///d:/CP-Arena/src/components/common/ModalPortal.tsx).
+
+---
+
+### Bagian 29: Sprint 8 — Dynamic Question Bank & Online Judge Coding Problem CRUD
+- **Konteks & Implementasi:**
+  - Mengubah tab **Bank Soal & Editorial** (`/admin/questions`) menjadi sistem Full CRUD dinamis:
+    1. Kuis Pilihan Ganda (Teori & Logika Algoritma): Form tambah, edit butir soal, kunci jawaban, dan modal konfirmasi hapus.
+    2. Tantangan Koding Online Judge: Manajemen judul soal, batas waktu (ms), batas memori (MB), deskripsi markdown, serta CRUD testcase (Sample vs Hidden Testcase, bobot poin).
+  - Terintegrasi langsung dengan `ArenaStore.getCodingProblemForGame(gameId)` di [src/lib/problem-mapping.ts](file:///d:/CP-Arena/src/lib/problem-mapping.ts).
+
+---
+
+### Bagian 30: Sprint 9 — 100% Dynamic Cohort Architecture & Eliminasi Data Kelas Dummy Pre-Seeded
+- **Konteks & Masalah Pengguna:**
+  - Pengguna mendapati bahwa bar *"PILIH RUANG LINGKUP KELAS / KOHORT"* masih menampilkan kelas bawaan prototipe (`Kelas KAMIS (SI 2025)`, `Kelas JUMAT (TI & SI 2024–2025)`, `🏆 Kelas LOMBA`), padahal admin belum pernah membuat kelas-kelas tersebut secara manual.
+  - Pengguna menginstruksikan agar seluruh kelas yang muncul di sistem HANYA yang secara eksplisit dibuat oleh Admin melalui tombol `+ Buat Kelas / Kohort` (100% Murni Dinamis).
+- **Analisis Multi-Perspektif:**
+  - **Software & Backend Engineering:** Seed data prototipe (`INITIAL_COHORTS`) di [src/lib/seed-data.ts](file:///d:/CP-Arena/src/lib/seed-data.ts) sebelumnya menginisialisasi 3 kohort default ke dalam `localStorage` browser. Perlindungan statis (`['c-kamis', 'c-jumat', 'c-lomba']`) pada `deleteCohort` juga membatasi kebebasan admin.
+  - **UI/UX Designer:** Jika total kelas terdaftar adalah 0, sistem tidak boleh menampilkan bar filter kosong atau kelas dummy bawaan. Sebaliknya, harus ditampilkan *Empty State* industrial yang rapi dengan panduan jelas mengarahkan Admin ke menu pembuatan kelas di Data Mahasiswa.
+  - **Quality Assurance & Control:** Seluruh pengujian sistem (termasuk Test Group 14 dan 16) harus memvalidasi bahwa sistem bermula dari 0 kohort, seluruh pembuatan kelas melalui `createCohort` tercatat dinamis, dan penghapusan kelas diperbolehkan asalkan tidak ada mahasiswa terdaftar di dalamnya.
+- **Implementasi Solusi:**
+  1. **Eliminasi Auto-Seed Dummy Cohort:**
+     - [src/lib/seed-data.ts](file:///d:/CP-Arena/src/lib/seed-data.ts): Mengosongkan `INITIAL_COHORTS: Cohort[] = [];`.
+     - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+       - `getCohorts()`: Mengembalikan `[]` saat belum ada data dan secara otomatis membersihkan kohort legacy dummy (`c-kamis`, `c-jumat`, `c-lomba`) yang tersisa di `localStorage` peramban klien.
+       - `deleteCohort(id)`: Menghapus batasan hardcoded kohort inti, sehingga seluruh kelas buatan admin dapat dihapus secara aman (dengan proteksi integritas: kelas tidak dapat dihapus jika masih ada mahasiswa terdaftar).
+       - `isGameAllowedForUser(user, gameId)`: Mengizinkan akses kontes terbuka jika mahasiswa belum memiliki kohort spesifik, atau membatasi sesuai matriks akses `cohort.allowed_game_ids`.
+       - `createGame(dto)`: Mengganti fallback statis menjadi `this.getCohorts().map(c => c.id_cohort)`.
+  2. **Empty State & UI Dinamis di Kontrol Kontes & Saklar:**
+     - [src/components/admin/tabs/AdminContestControlTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminContestControlTab.tsx):
+       - Bilah filter *"PILIH RUANG LINGKUP KELAS / KOHORT"* menampilkan status `0 Kelas` dengan pesan empty state industrial rapi dan tombol shortcut ke `+ Buat Kelas di Data Mahasiswa`.
+       - Quick Master Freeze disembunyikan saat `activeCohorts.length === 0`.
+       - Tabel saklar menampilkan kolom informatif *"Status Saklar Kelas"* dengan catatan *"Belum ada kelas terdaftar (Atur di menu Data Mahasiswa)"* saat belum ada kelas dibuat.
+       - Modal formulir Tambah/Edit Game menampilkan pesan panduan jika belum ada kelas terdaftar.
+  3. **Penyelarasan Dinamis di Menu Pemantauan Mahasiswa:**
+     - [src/components/admin/tabs/AdminStudentMonitorTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminStudentMonitorTab.tsx):
+       - Tombol filter kelas kini murni dipetakan dari kohort aktif hasil inputan admin (`cohorts.map(...)`).
+       - Modal Tambah Akun memvalidasi ketersediaan kelas dan menampilkan instruksi pembuatan kelas baru jika admin belum membuat kelas.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Type-Checking: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated System Suite: **227/227 Tests PASS (100%)** via `npm test` di [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs).
+
+---
+
+### Bagian 31: Sprint 10 — 100% Dynamic Contest Architecture, Auto-Purge Mock Games, & Real-Time Search Engine
+- **Konteks & Kebutuhan Rekayasa:**
+  - Pengguna meminta agar daftar paket kontes (`games`) pada tab **Kontrol Kontes & Saklar** dijadikan **100% murni dinamis** (hanya muncul jika Admin membuatnya secara manual melalui `+ Buat Paket Kontes Baru`), selaras dengan arsitektur kohort dinamis sebelumnya.
+  - Pengguna menginstruksikan pembersihan total terhadap 7 paket kontes dummy prototipe (`G1`–`G7` dengan judul mock bawaan) agar basis data bersih dan siap untuk data produksi/riil.
+  - Menyediakan **Field Search (Pencarian Real-Time)** dan filter mode game (`SOLO` vs `TEAM`) pada tabel kontes.
+- **Analisis Multi-Perspektif:**
+  - **Software Engineering:**
+    - Lifecycle data kontes kini murni digerakkan oleh event creation Admin (`ArenaStore.createGame`).
+    - Skema auto-numbering ID game (`G1`, `G2`...) beradaptasi mulai dari indeks 1 secara dinamis.
+  - **Backend Engineering:**
+    - [src/lib/seed-data.ts](file:///d:/CP-Arena/src/lib/seed-data.ts): Mengosongkan konstanta awal `INITIAL_GAMES: Game[] = [];`.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): `ArenaStore.getGames()` kini dilengkapi sanitasi otomatis terhadap array legacy mock games (`Onboarding Arena...`, `[KAMIS] - ...`, `[JUMAT] - ...`), sehingga browser klien yang me-refresh halaman otomatis menghapus data dummy lama tanpa perlu pembersihan cache manual.
+  - **UI/UX Designer:**
+    - [src/components/admin/tabs/AdminContestControlTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminContestControlTab.tsx):
+      - Toolbar atas tabel kontes dilengkapi search bar (`Search` icon, clear button `X`), mode filter pills (`Semua`, `SOLO`, `TEAM`), dan counter badge `(Menampilkan X dari Y)`.
+      - Saat 0 kontes terdaftar (`games.length === 0`), ditampilkan Empty State industrial yang elegan dengan tombol CTA `+ Buat Paket Kontes Pertama`.
+      - Saat pencarian tidak menemukan hasil yang cocok, ditampilkan status informatif dengan tombol `Reset Filter Pencarian`.
+    - [src/components/admin/tabs/AdminQuestionBankTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminQuestionBankTab.tsx):
+      - Menampilkan empty state yang rapi jika belum ada paket kontes terdaftar dengan tombol navigasi langsung ke menu Kontrol Kontes.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 18 (Contest Search Engine & Real-Time Filtering Logic)** yang menguji filter ID game, keyword judul, kategori materi, isolasi mode SOLO/TEAM, dan non-matching query.
+      - Memperbarui Test Group 6 untuk memvalidasi inisialisasi awal 0 paket game dan penciptaan kontes dinamis.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **239/239 Tests PASS (100%)** via `npm test`.
+
+---
+
+### Bagian 32: Sprint 11 — Industrial Semantic URL Standardization (/admin/contests) & Zero Breaking Change Compatibility
+- **Konteks & Kebutuhan Rekayasa:**
+  - Standardisasi URL endpoint menu *Kontrol Kontes & Saklar* dari URL prototipe `/admin/games` menjadi rute berstandar industri Competitive Programming `/admin/contests` (berkiblat pada arsitektur ICPC DOMjudge, Codeforces, dan Kattis).
+  - Menjaga prinsip *High Availability & Zero Breaking Changes*: URL lama (`/admin/games`, `/admin/game`, `/admin/kontes`, `/admin/contest`) harus tetap dapat diakses tanpa menghasilkan error 404 melalui routing aliases & seamless state resolver.
+  - Memastikan konsistensi arsitektur RBAC, navigasi internal, deep link, dan test suite verifikasi.
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & Domain-Driven Design (DDD):**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts): Memperbarui definisi tipe `AdminActiveTab` dengan `'contests'` sebagai union type kanonikal utama:
+      ```typescript
+      export type AdminActiveTab = 'contests' | 'games' | 'questions' | 'submissions' | 'teams' | 'students' | 'export';
+      ```
+    - [src/components/admin/AdminSidebar.tsx](file:///d:/CP-Arena/src/components/admin/AdminSidebar.tsx): Memperbarui tab identifier menu navigasi sidebar ke `id: 'contests'` dan memastikan highlight visual tetap aktif jika pengguna membuka alias legacy `games`.
+    - [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx): Memperbarui evaluasi tab aktif agar mengenali `activeAdminTab === 'contests' || activeAdminTab === 'games'`.
+  - **Backend Engineering & Next.js Routing Architecture:**
+    - [src/app/admin/[tab]/page.tsx](file:///d:/CP-Arena/src/app/admin/[tab]/page.tsx):
+      - Mengonfigurasi `VALID_TABS` dengan `'contests'` sebagai entri utama.
+      - Menambahkan dictionary `TAB_ALIASES` memetakan `'games'`, `'game'`, `'kontes'`, dan `'contest'` ke `'contests'`.
+      - Fallback route yang tidak valid diarahkan secara aman ke `/admin/contests`.
+    - [src/app/admin/page.tsx](file:///d:/CP-Arena/src/app/admin/page.tsx):
+      - Mengubah rute redirect default dari `/admin/games` ke `/admin/contests`.
+    - [src/components/admin/tabs/AdminQuestionBankTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminQuestionBankTab.tsx):
+      - Mengarahkan tombol CTA empty state langsung ke `/admin/contests`.
+  - **UI/UX Designer:**
+    - Menyelaraskan teks judul header *"Kontrol Kontes & Saklar Status Independen"* dengan URL address bar `/admin/contests`, menciptakan kohesi semantik yang profesional bagi admin dan dosen.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Test Group 8 diperbarui untuk memvalidasi redirect pasca login Admin langsung menuju `/admin/contests`.
+      - Test Group 10 diperbarui untuk menguji rute dinamis `/admin/contests`, pengujian alias mundur (`/admin/games` -> `/admin/contests`, `/admin/game` -> `/admin/contests`), alias semantik bahasa Indonesia (`/admin/kontes` -> `/admin/contests`), dan fallback URL kosong/invalid.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **243/243 Tests PASS (100%)** via `npm test`.
+
+---
+
+### Bagian 33: Sprint 12 — Global Standard Industrial Taxonomy (/admin/problems) & Zero Breaking Change Compatibility
+- **Konteks & Kebutuhan Rekayasa:**
+  - Standardisasi endpoint menu *Bank Soal & Editorial* dari URL lama `/admin/questions` menjadi rute berstandar emas global Competitive Programming `/admin/problems` (mengadopsi arsitektur ICPC DOMjudge, Codeforces, LeetCode, dan Kattis).
+  - Menjaga prinsip *Zero Breaking Changes*: URL lama (`/admin/questions`, `/admin/question`, `/admin/soal`, `/admin/bank-soal`, `/admin/problem-bank`) otomatis me-resolve ke `/admin/problems` tanpa menghasilkan error 404.
+  - Memastikan konsistensi penamaan domain (*Ubiquitous Language*) antara `Problem A`, `Problem B`, `Testcase`, `Starter Code`, dan `Editorial` dengan address bar URL browser.
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & Domain-Driven Design (DDD):**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts): Memperbarui definisi tipe `AdminActiveTab` dengan `'problems'` sebagai union type kanonikal utama:
+      ```typescript
+      export type AdminActiveTab =
+        | 'contests'
+        | 'games'
+        | 'problems'
+        | 'questions'
+        | 'submissions'
+        | 'teams'
+        | 'students'
+        | 'export';
+      ```
+    - [src/components/admin/AdminSidebar.tsx](file:///d:/CP-Arena/src/components/admin/AdminSidebar.tsx): Mengubah tab identifier menu navigasi sidebar ke `id: 'problems'` dan memastikan highlight visual tetap aktif jika pengguna membuka alias legacy `questions`.
+    - [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx): Memperbarui evaluasi tab aktif agar mengenali `activeAdminTab === 'problems' || activeAdminTab === 'questions'`.
+  - **Backend Engineering & Next.js Routing Architecture:**
+    - [src/app/admin/[tab]/page.tsx](file:///d:/CP-Arena/src/app/admin/[tab]/page.tsx):
+      - Mengonfigurasi `VALID_TABS` dengan `'problems'` sebagai entri utama.
+      - Menambahkan dictionary `TAB_ALIASES` memetakan `'questions'`, `'question'`, `'problem'`, `'soal'`, `'bank-soal'`, dan `'problem-bank'` ke `'problems'`.
+      - Fallback route yang tidak valid diarahkan secara aman ke `/admin/contests`.
+  - **UI/UX Designer:**
+    - Menyelaraskan teks judul *"Bank Soal & Editorial"* dan sublabel *"Narasi, Testcase & Hint"* dengan URL address bar `/admin/problems`, memberikan impresi platform Competitive Programming kelas dunia yang profesional dan terpercaya.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Test Group 10 diperbarui untuk menguji rute dinamis `/admin/problems`, pengujian alias mundur (`/admin/questions` -> `/admin/problems`, `/admin/question` -> `/admin/problems`), alias semantik bahasa Indonesia (`/admin/soal`, `/admin/bank-soal`), dan variasi URL lainnya.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **248/248 Tests PASS (100%)** via `npm test`.
+
+---
+
+### Bagian 34: Sprint 13 — Anti-Cheat Deterministic Seeded Question Shuffling per Participant
+- **Konteks & Kebutuhan Rekayasa:**
+  - Mahasiswa yang mengerjakan kuis maupun tantangan kontes tidak boleh mendapatkan urutan soal yang seragam demi mencegah kecurangan saling intip di laboratorium komputer (misal: Soal #1 bagi Mahasiswa A menjadi Soal #4 bagi Mahasiswa B).
+  - Pengacakan wajib bersifat **Deterministik & Idempotent** (tidak boleh menggunakan `Math.random()` murni): jika mahasiswa me-refresh browser atau koneksi terputus, urutan soal tetap 100% konsisten bagi dirinya sepanjang sesi.
+  - Opsi pilihan ganda (A, B, C, D) turut diacak secara deterministik per butir soal per peserta untuk menghentikan pembocoran huruf opsi.
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & Cryptographic PRNG:**
+    - [src/lib/shuffle.ts](file:///d:/CP-Arena/src/lib/shuffle.ts):
+      - Mengembangkan generator hashing 32-bit FNV-1a (`stringToSeed`).
+      - Mengembangkan generator angka pseudorandom berkualitas tinggi Mulberry32 (`createSeededRandom`).
+      - Mengembangkan algoritma pengacakan murni (*pure immutable*) Fisher-Yates / Knuth (`seededShuffle`).
+    - Seed unik dibentuk dari kombinasi identitas: `${user.nim}_${game.id_game}_QUIZ_SEED`.
+  - **Backend Engineering & Data Model:**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts): Menambahkan field `shuffled_question_ids?: string[]` pada `Submission` interface.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - `ArenaStore.startQuizSession`: Mengunci urutan array ID soal teracak ke dalam rekaman sesi submisi mahasiswa.
+      - `ArenaStore.getQuestionsForUser`: Memulihkan (*restore*) urutan soal teracak persisten jika sesi sudah aktif, atau me-fallback ke deterministik shuffle.
+      - Penilaian `ArenaStore.answerQuestion`: Tetap terikat secara independen pada `id_soal` kanonikal, sehingga kebal terhadap pergeseran indeks.
+  - **UI/UX Designer:**
+    - [src/components/arena/QuizArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/QuizArenaModal.tsx):
+      - Navigator nomor kuis (`#1`, `#2`, `#3`...) memetakan urutan lokal unik mahasiswa.
+      - Header menampilkan `Soal X dari Y` dan indikator sekunder halus `Ref: <id_soal>` untuk memudahkan pengawas atau dosen mengidentifikasi nomor referensi saat mendampingi mahasiswa di lab.
+      - Pilihan ganda diacak deterministik per butir soal via `useMemo` dan `seededShuffle`.
+    - [src/components/arena/EditorialModal.tsx](file:///d:/CP-Arena/src/components/arena/EditorialModal.tsx):
+      - Menampilkan hasil evaluasi dan editorial pembahasan pasca-ujian mengikuti urutan yang persis sama dengan yang dialami mahasiswa saat ujian.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 19 (Deterministic Seeded Shuffle & Anti-Cheat Question Order)** dengan 12 assertions baru yang memvalidasi: determinisme seed, keanekaragaman urutan antar-mahasiswa, persistensi sesi pasca-reload, integritas penilaian berbasis ID soal, dan kekebalan terhadap pergeseran indeks.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **260/260 Tests PASS (100%)** via `npm test`.
+
+---
+
+### Bagian 35: Sprint 14 — Mathematical & Algorithmic Formula Rendering Engine (Pangkat `**`, Big-O & Relational Symbols)
+- **Konteks & Kebutuhan Rekayasa:**
+  - Mahasiswa membutuhkan representasi visual yang jelas dan mudah dibaca untuk rumus matematika, batas masalah (*constraints*), dan analisis kompleksitas algoritma.
+  - Mengonversi secara cerdas notasi input dosen seperti pangkat Python (`10**8`, `2**31`, `N**2`), pangkat kalkulator (`10^8`), kompleksitas Big-O (`O(N log N)`, `O(N**2)`), dan simbol relasional (`<=`, `>=`, `!=`, `->`, `+-`) menjadi tipografi matematika yang indah.
+  - **Prinsip Proteksi Kode (*Code Block Invariance*):** Di dalam blok kode pemrograman (misal `return n ** 2`), operator eksponensial `**` wajib dipertahankan verbatim dan tidak boleh termutasi menjadi format superskrip.
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & AST Tokenizer:**
+    - [src/lib/math-parser.ts](file:///d:/CP-Arena/src/lib/math-parser.ts):
+      - Mengembangkan parser multi-tahap yang memisahkan segmen `code_block`, `inline_code`, `latex_math`, `big_o`, `power`, `symbol`, dan teks biasa.
+      - Mendukung peta translasi `SYMBOL_MAP` (`<=` $\to$ `≤`, `>=` $\to$ `≥`, `!=` $\to$ `≠`, `->` $\to$ `→`, `+-` $\to$ `±`, `\times` $\to$ `×`).
+      - Menyediakan fungsi normalisasi `formatMathString` dan tokenizer rekursif `parseInlineMathTokens`.
+  - **UI/UX Designer & Tipografi Dark Mode:**
+    - [src/components/common/MathText.tsx](file:///d:/CP-Arena/src/components/common/MathText.tsx):
+      - Komponen universal yang merender superskrip cyan (`10`<sup>8</sup>), badge Big-O berfont serif italic (`𝒪(N log N)`), simbol relasional berwarna terang, dan blok kode emerald (`#070b14`).
+      - Zero XSS vulnerability: Merender murni menggunakan virtual DOM React tanpa `dangerouslySetInnerHTML`.
+    - Integrasi penuh pada:
+      - [src/components/arena/QuizArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/QuizArenaModal.tsx): Judul, narasi kuis, petunjuk hint, dan opsi jawaban.
+      - [src/components/arena/EditorialModal.tsx](file:///d:/CP-Arena/src/components/arena/EditorialModal.tsx): Narasi soal, jawaban mahasiswa, kunci jawaban, dan pembahasan editorial dosen.
+      - [src/components/arena/CodingArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/CodingArenaModal.tsx): Deskripsi problem solving, format masukan/keluaran, dan batasan masalah (*constraints*).
+      - [src/components/admin/tabs/AdminQuestionBankTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminQuestionBankTab.tsx): Pratinjau butir soal kuis dan tantangan koding.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 20 (Mathematical Notation & Formula Parser Engine)** dengan 13 assertions baru yang memvalidasi: penguraian pangkat Python `10**8` dan `2^31`, ekspresi Big-O `O(N log N)` dan `O(N**2)`, simbol relasional, isolasi kode blok Python `n ** 2`, dan verifikasi string akhir end-to-end.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **273/273 Tests PASS (100%)** via `npm test`.
+
+---
+
+### Bagian 36: Sprint 15 — Pure Dynamic Submissions Feed & Granular Submissions/Problem Deletion Engine
+- **Konteks & Kebutuhan Rekayasa:**
+  - Menghilangkan data dummy prototipe submisi (`SUB-2545001-G1`, `SUB-2545001-G2`, `SUB-2545001-G4` milik Cecilia) dari antrean penjurian `/admin/submissions`, sehingga sistem beroperasi 100% dengan data dinamis real-time (dimulai dari 0 submisi).
+  - Menyediakan kendali penghapusan granular bagi Dosen/Admin:
+    - **Hapus per Submisi:** Menghapus satu submisi spesifik, mengembalikan kuota pengerjaan, dan otomatis memotong akumulasi XP serta menyinkronkan ulang level mahasiswa yang bersangkutan.
+    - **Hapus per Problem (Bulk Delete):** Menghapus seluruh riwayat submisi untuk paket kontes/soal tertentu sekaligus saat paket tersebut dipilih di filter bar.
+  - Mengganti pill filter kelas statis (`KAMIS`, `JUMAT`, `LOMBA`) menjadi filter kohort dinamis (`dynamicCohorts`) yang terhubung langsung ke basis data kohort kelas.
+  - Menghadirkan antarmuka *Industrial Dark-Mode Empty State* saat belum ada submisi yang masuk, dengan zero AI slop modal konfirmasi via `ModalPortal`.
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & Data Store Architecture:**
+    - [src/lib/seed-data.ts](file:///d:/CP-Arena/src/lib/seed-data.ts):
+      - Mengosongkan `INITIAL_SUBMISSIONS: Submission[] = [];` menjadi array bersih.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - Mengimplementasikan `auto-purge` pada `getSubmissions()` untuk membersihkan entri mock lama dari `localStorage` browser pengguna secara transparan.
+      - Menambahkan metode `deleteSubmission(submissionId: string)`: menghapus record submisi dan mengurangi `total_xp` mahasiswa sebesar XP yang didapat dari submisi tersebut, lalu menghitung ulang levelnya secara matematis.
+      - Menambahkan metode `deleteSubmissionsForGame(gameId: string)`: melakukan penghapusan massal seluruh submisi yang berasosiasi dengan paket game tertentu, lalu memotong XP dari seluruh mahasiswa terdampak secara akurat.
+  - **UI/UX Designer & Industrial Dark Mode Interface:**
+    - [src/components/admin/tabs/AdminSubmissionsTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminSubmissionsTab.tsx):
+      - Menghubungkan pill filter kelas ke daftar kohort dinamis (`cohorts` dari store) dengan badge kuantitas submisi real-time.
+      - Menghapus residu *fallback* `users[].klub_hari` yang sebelumnya memunculkan kelas dummy (`Kelas ALL`, `Kelas KAMIS`, `Kelas JUMAT`) saat data kelas admin masih kosong, sehingga kini murni 100% hanya menampilkan kelas yang dibuat manual oleh Admin.
+      - Menambahkan kolom `Aksi` pada tabel dengan tombol icon sampah (`Trash2`) per baris submisi.
+      - Menambahkan tombol aksi toolbar `Hapus Submisi {filterGame}` berwarna rose saat filter paket soal aktif.
+      - Menambahkan kartu *Industrial Empty State* elegan (`#0b1120`, border `#1e293b`) dengan ikon `ListChecks` ketika belum ada submisi.
+      - Mengimplementasikan 2 modal konfirmasi kustom via [src/components/common/ModalPortal.tsx](file:///d:/CP-Arena/src/components/common/ModalPortal.tsx) tanpa menggunakan `window.confirm()` bawaan browser.
+    - [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx):
+      - Meneruskan props `cohorts` dan handler `onAlert` ke `<AdminSubmissionsTab />`.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Memutakhirkan **Test Group 12 (DOMjudge ICPC Scoreboard Matrix & Freeze Simulator)** untuk menggunakan seeding dinamis terisolasi untuk pengujian metriks AC dan Freeze Scoreboard tanpa bergantung pada dummy data awal.
+      - Menambahkan pengujian di **Test Group 15 (Student Progress Management)** untuk validasi `deleteSubmission` dan `deleteSubmissionsForGame`.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **277/277 Tests PASS (100%)** via `npm test`.

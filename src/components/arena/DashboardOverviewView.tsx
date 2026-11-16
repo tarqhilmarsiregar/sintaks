@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Game, Submission, User, LeaderboardPlayer, Team } from '@/types/arena';
+import { ArenaStore } from '@/lib/arena-store';
 import { StudentActiveMenu } from './StudentSidebar';
 import StatCardsGrid, { ArenaUserStats } from './StatCardsGrid';
 import UserAvatar from './UserAvatar';
@@ -51,9 +52,9 @@ export default function DashboardOverviewView({
     );
   }, [teams, currentUser]);
 
-  // Status game untuk user
+  // Status game untuk user (dinamis sesuai kohort/kelas)
   const getGameStatus = (g: Game) => {
-    return currentUser.klub_hari === 'JUMAT' ? g.status_jumat : g.status_kamis;
+    return ArenaStore.getGameStatusForUser(g, currentUser);
   };
 
   // Top 5 pemain kelas (memoized)
@@ -100,7 +101,7 @@ export default function DashboardOverviewView({
               <span className="text-white font-mono">{currentUser.codename}</span>
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl leading-relaxed">
-              Sesi aktif terdaftar pada <strong className="text-slate-200 font-semibold">Kelas {currentUser.klub_hari}</strong>.
+              Sesi aktif terdaftar pada <strong className="text-slate-200 font-semibold">Kelas {currentUser.klub_hari}</strong>{currentUser.periode ? ` • ${currentUser.periode}` : ''}.
               Selesaikan problem set algoritma mingguan, pelajari editorial pembahasan dosen, dan kumpulkan poin XP untuk meningkatkan peringkat klasemen.
             </p>
           </div>

@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Game, Submission, User, ICPC_PROBLEMS_DEF } from '@/types/arena';
 import { Problem } from '@/types';
 import { getCodingProblemForGame } from '@/lib/problem-mapping';
+import { ArenaStore } from '@/lib/arena-store';
 import { Search, Clock, Target, CheckCircle2, Lock, BookOpen, Play, Code2 } from 'lucide-react';
 
 interface GameCatalogGridProps {
@@ -28,11 +29,9 @@ export default function GameCatalogGrid({
   const [filterDifficulty, setFilterDifficulty] = useState('ALL');
   const [filterMeeting, setFilterMeeting] = useState('ALL');
 
-  // Helper untuk menentukan status game untuk user yang sedang aktif
+  // Helper untuk menentukan status game untuk user yang sedang aktif secara dinamis
   const getGameStatusForUser = (game: Game): 'UPCOMING' | 'OPEN' | 'FROZEN' | 'ENDED' => {
-    if (!currentUser) return game.status_kamis;
-    if (currentUser.klub_hari === 'JUMAT') return game.status_jumat;
-    return game.status_kamis;
+    return ArenaStore.getGameStatusForUser(game, currentUser);
   };
 
   const filteredGames = useMemo(() => {
@@ -148,9 +147,14 @@ export default function GameCatalogGrid({
               ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
               : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
 
+          // Status Izin Akses Sesuai Kohort
+          const isAllowed = ArenaStore.isGameAllowedForUser(currentUser, game.id_game);
+
           // Warna badge status
           const statusBadge =
-            userStatus === 'OPEN'
+            !isAllowed
+              ? 'bg-slate-800/80 text-slate-400 border-slate-700/60'
+              : userStatus === 'OPEN'
               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
               : userStatus === 'UPCOMING'
               ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
@@ -187,7 +191,7 @@ export default function GameCatalogGrid({
                       {game.kesulitan}
                     </span>
                     <span className={`px-2 py-0.5 rounded border font-semibold ${statusBadge}`}>
-                      {userStatus}
+                      {!isAllowed ? 'TERKUNCI KELAS' : userStatus}
                     </span>
                   </div>
                 </div>
@@ -287,6 +291,11 @@ export default function GameCatalogGrid({
                         <span>Tantangan Koding Online Judge</span>
                       </button>
                     )}
+                  </div>
+                ) : !isAllowed ? (
+                  <div className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-[#0f172a] border border-[#1e293b] text-slate-500 font-semibold text-xs select-none">
+                    <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Terkunci (Di Luar Akses Kelas)</span>
                   </div>
                 ) : userStatus === 'OPEN' ? (
                   <button

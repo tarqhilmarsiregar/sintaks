@@ -9,7 +9,7 @@ interface LeaderboardSidebarProps {
   players: LeaderboardPlayer[];
   teams: Team[];
   initialFilter?: KlubHari;
-  onFilterChange: (klub: 'KAMIS' | 'JUMAT' | 'ALL') => void;
+  onFilterChange: (klub: KlubHari) => void;
 }
 
 export default function LeaderboardSidebar({
@@ -18,11 +18,11 @@ export default function LeaderboardSidebar({
   initialFilter = 'KAMIS',
   onFilterChange
 }: LeaderboardSidebarProps) {
-  const [selectedFilter, setSelectedFilter] = useState<'KAMIS' | 'JUMAT' | 'ALL'>(
+  const [selectedFilter, setSelectedFilter] = useState<KlubHari>(
     initialFilter === 'ALL' ? 'KAMIS' : initialFilter
   );
 
-  const handleFilter = (val: 'KAMIS' | 'JUMAT' | 'ALL') => {
+  const handleFilter = (val: KlubHari) => {
     setSelectedFilter(val);
     onFilterChange(val);
   };
@@ -49,6 +49,7 @@ export default function LeaderboardSidebar({
           >
             <option value="KAMIS">Kelas KAMIS</option>
             <option value="JUMAT">Kelas JUMAT</option>
+            <option value="LOMBA">Kelas LOMBA</option>
             <option value="ALL">Semua Kelas</option>
           </select>
         </div>

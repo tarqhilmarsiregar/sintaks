@@ -27,7 +27,7 @@ interface LeaderboardViewProps {
   teams: Team[];
   currentUser: User;
   initialFilter?: KlubHari;
-  onFilterChange: (klub: 'KAMIS' | 'JUMAT' | 'ALL') => void;
+  onFilterChange: (klub: KlubHari) => void;
 }
 
 export default function LeaderboardView({
@@ -37,13 +37,13 @@ export default function LeaderboardView({
   initialFilter = 'KAMIS',
   onFilterChange,
 }: LeaderboardViewProps) {
-  const [selectedFilter, setSelectedFilter] = useState<'KAMIS' | 'JUMAT' | 'ALL'>(
+  const [selectedFilter, setSelectedFilter] = useState<KlubHari>(
     initialFilter === 'ALL' ? 'KAMIS' : initialFilter
   );
   const [activeTab, setActiveTab] = useState<'matrix' | 'podium'>('matrix');
   const [isFrozen, setIsFrozen] = useState(false);
 
-  const handleFilter = (val: 'KAMIS' | 'JUMAT' | 'ALL') => {
+  const handleFilter = (val: KlubHari) => {
     setSelectedFilter(val);
     onFilterChange(val);
   };
@@ -123,7 +123,7 @@ export default function LeaderboardView({
 
           {/* Filter Buttons Kelas */}
           <div className="flex items-center gap-1 p-1 rounded-lg bg-[#080d1a] border border-[#1e293b]">
-            {(['KAMIS', 'JUMAT', 'ALL'] as const).map((filterVal) => (
+            {(['KAMIS', 'JUMAT', 'LOMBA', 'ALL'] as const).map((filterVal) => (
               <button
                 key={filterVal}
                 onClick={() => handleFilter(filterVal)}
@@ -133,7 +133,7 @@ export default function LeaderboardView({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {filterVal === 'KAMIS' ? 'Kelas KAMIS' : filterVal === 'JUMAT' ? 'Kelas JUMAT' : 'Semua'}
+                {filterVal === 'KAMIS' ? 'Kelas KAMIS' : filterVal === 'JUMAT' ? 'Kelas JUMAT' : filterVal === 'LOMBA' ? 'Kelas LOMBA' : 'Semua'}
               </button>
             ))}
           </div>

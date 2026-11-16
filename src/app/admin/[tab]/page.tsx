@@ -2,25 +2,56 @@
 
 import React, { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AdminCommandCenterContainer, { AdminActiveTab } from '@/components/admin/AdminCommandCenterContainer';
+import AdminCommandCenterContainer from '@/components/admin/AdminCommandCenterContainer';
+import { AdminActiveTab } from '@/types/arena';
 
-const VALID_TABS: AdminActiveTab[] = ['games', 'questions', 'teams', 'students'];
+const VALID_TABS: AdminActiveTab[] = [
+  'contests',
+  'games',
+  'problems',
+  'questions',
+  'submissions',
+  'teams',
+  'students',
+  'export'
+];
+
+// Alias mapping untuk fleksibilitas navigasi URL admin
+const TAB_ALIASES: Record<string, AdminActiveTab> = {
+  'kontes': 'contests',
+  'games': 'contests',
+  'game': 'contests',
+  'contest': 'contests',
+  'questions': 'problems',
+  'question': 'problems',
+  'problem': 'problems',
+  'soal': 'problems',
+  'bank-soal': 'problems',
+  'problem-bank': 'problems',
+  'submisi': 'submissions',
+  'judgement': 'submissions',
+  'tim': 'teams',
+  'team': 'teams',
+  'mahasiswa': 'students',
+  'peserta': 'students',
+  'ekspor': 'export',
+  'rekap': 'export',
+};
 
 export default function AdminDynamicTabPage() {
   const params = useParams();
   const router = useRouter();
 
-  const rawTab = (params?.tab as string) || 'games';
-  const isValid = VALID_TABS.includes(rawTab as AdminActiveTab);
+  const rawTab = (params?.tab as string) || 'contests';
+  const resolvedTab = TAB_ALIASES[rawTab] || (VALID_TABS.includes(rawTab as AdminActiveTab) ? (rawTab as AdminActiveTab) : null);
 
   useEffect(() => {
-    if (!isValid) {
-      router.replace('/admin/games');
+    if (!resolvedTab) {
+      router.replace('/admin/contests');
     }
-  }, [isValid, router]);
+  }, [resolvedTab, router]);
 
-  const activeTab: AdminActiveTab = isValid ? (rawTab as AdminActiveTab) : 'games';
+  const activeTab: AdminActiveTab = resolvedTab || 'contests';
 
   return <AdminCommandCenterContainer activeAdminTab={activeTab} />;
 }
-

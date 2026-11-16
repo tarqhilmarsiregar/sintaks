@@ -7,7 +7,7 @@ export default function AdminRootRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/admin/games');
+    router.replace('/admin/contests');
   }, [router]);
 
   return (

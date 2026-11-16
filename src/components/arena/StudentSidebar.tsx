@@ -4,7 +4,6 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/types/arena';
 import { calculateLevelInfo } from '@/lib/gamification';
-import { SITE_CONFIG } from '@/config/site';
 import {
   LayoutDashboard,
   Trophy,
@@ -329,7 +328,7 @@ export default function StudentSidebar({
       </div>
 
       {/* 3. Action Footer di Bagian Bawah Sidebar (Tombol Logout Akun) */}
-      <div className="p-3.5 border-t border-[#1e293b] bg-[#070b16]/95 shrink-0 space-y-2 mt-auto">
+      <div className="p-3.5 border-t border-[#1e293b] bg-[#070b16]/95 shrink-0 mt-auto">
         <button
           onClick={onLogout}
           className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-rose-950/30 hover:bg-rose-900/40 border border-rose-500/30 hover:border-rose-500/50 text-rose-300 hover:text-white text-xs font-mono font-semibold shadow-sm transition-all active:scale-[0.98] group"
@@ -338,14 +337,6 @@ export default function StudentSidebar({
           <LogOut className="w-3.5 h-3.5 text-rose-400 group-hover:translate-x-0.5 transition-transform" />
           <span>Keluar (Logout)</span>
         </button>
-
-        <div className="px-1 flex items-center justify-between text-xs font-mono text-slate-500">
-          <span>{SITE_CONFIG.name}</span>
-          <span className="text-emerald-400/90 flex items-center gap-1 font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            v{SITE_CONFIG.version} Online
-          </span>
-        </div>
       </div>
       </aside>
     </>

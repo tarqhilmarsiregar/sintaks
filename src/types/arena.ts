@@ -1,10 +1,39 @@
 export type UserRole = 'ADMIN' | 'PESERTA';
-export type KlubHari = 'KAMIS' | 'JUMAT' | 'ALL';
+export type KlubHari = 'KAMIS' | 'JUMAT' | 'LOMBA' | 'ALL';
 export type GameStatus = 'UPCOMING' | 'OPEN' | 'FROZEN' | 'ENDED';
 export type GameDifficulty = 'Easy' | 'Medium' | 'Hard';
 export type GameMode = 'SOLO' | 'TEAM';
 export type SubmissionSessionStatus = 'ACTIVE' | 'DONE';
 export type PassingStatus = 'LULUS' | 'BELUM LULUS';
+
+export type AdminActiveTab =
+  | 'contests'
+  | 'games'
+  | 'problems'
+  | 'questions'
+  | 'submissions'
+  | 'teams'
+  | 'students'
+  | 'export';
+
+export interface Cohort {
+  id_cohort: string;
+  nama_kelas: string;
+  kode_kelas: string;
+  periode: string; // Format: "<Ganjil/Genap> <Tahun>", e.g. "Ganjil 2025"
+  deskripsi?: string;
+  allowed_game_ids: string[];
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateCohortDTO {
+  nama_kelas: string;
+  kode_kelas: string;
+  periode: string; // Format: "<Ganjil/Genap> <Tahun>", e.g. "Ganjil 2025"
+  deskripsi?: string;
+  allowed_game_ids?: string[];
+}
 
 export interface User {
   nim: string;
@@ -17,11 +46,27 @@ export interface User {
   angkatan: number;
   kelas_reguler: string;
   klub_hari: KlubHari;
+  id_cohort?: string;
+  periode?: string;
   total_xp: number;
   level: number;
   tier_badge: string;
   milestones_json: string[];
   id_tim: string;
+}
+
+export interface CreateUserDTO {
+  nim: string;
+  nama_lengkap: string;
+  role: UserRole;
+  klub_hari?: KlubHari;
+  id_cohort?: string;
+  periode?: string;
+  prodi?: string;
+  angkatan?: number;
+  kelas_reguler?: string;
+  codename?: string;
+  password?: string;
 }
 
 export interface Game {
@@ -34,6 +79,8 @@ export interface Game {
   pin_akses?: string;
   status_kamis: GameStatus;
   status_jumat: GameStatus;
+  status_lomba?: GameStatus;
+  cohort_statuses?: Record<string, GameStatus>; // Dynamic per-cohort status mapping: id_cohort/kode_kelas -> GameStatus
   durasi_total_menit: number;
   durasi_per_soal_detik: number;
   min_nilai_lulus: number;
@@ -41,6 +88,34 @@ export interface Game {
   // Dynamic client-side fields:
   status_aktif?: GameStatus;
   user_submission?: Submission | null;
+}
+
+export interface CreateGameDTO {
+  id_game?: string; // e.g. "G8" (auto-generated if omitted)
+  ref_pertemuan: string; // e.g. "Pertemuan 8"
+  judul_game: string;
+  kategori_materi: string;
+  kesulitan: GameDifficulty; // 'Easy' | 'Medium' | 'Hard'
+  mode_game: GameMode; // 'SOLO' | 'TEAM'
+  pin_akses?: string;
+  durasi_total_menit: number;
+  durasi_per_soal_detik: number;
+  min_nilai_lulus: number;
+  allowed_cohort_ids?: string[]; // IDs of cohorts allowed to access this game
+  initial_status?: GameStatus; // default 'UPCOMING'
+}
+
+export interface UpdateGameDTO {
+  ref_pertemuan?: string;
+  judul_game?: string;
+  kategori_materi?: string;
+  kesulitan?: GameDifficulty;
+  mode_game?: GameMode;
+  pin_akses?: string;
+  durasi_total_menit?: number;
+  durasi_per_soal_detik?: number;
+  min_nilai_lulus?: number;
+  allowed_cohort_ids?: string[];
 }
 
 export interface Question {
@@ -55,6 +130,80 @@ export interface Question {
   editorial?: string;
   poin_dasar: number;
   first_blood_by?: string;
+}
+
+export interface CreateQuestionDTO {
+  id_soal?: string;
+  id_game: string;
+  judul: string;
+  narasi_soal: string;
+  cuplikan_kode?: string;
+  opsi_jawaban: string[] | string;
+  kunci_jawaban: string;
+  teks_hint?: string;
+  editorial?: string;
+  poin_dasar?: number;
+}
+
+export interface UpdateQuestionDTO {
+  id_game?: string;
+  judul?: string;
+  narasi_soal?: string;
+  cuplikan_kode?: string;
+  opsi_jawaban?: string[] | string;
+  kunci_jawaban?: string;
+  teks_hint?: string;
+  editorial?: string;
+  poin_dasar?: number;
+}
+
+export interface CreateCodingProblemDTO {
+  id?: string;
+  game_id?: string;
+  title: string;
+  slug?: string;
+  statement_md: string;
+  input_format: string;
+  output_format: string;
+  constraints: string;
+  time_limit_ms: number;
+  memory_limit_mb: number;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  tags?: string[];
+  sample_test_cases?: {
+    id: string;
+    problem_id: string;
+    input_data: string;
+    expected_output: string;
+    explanation?: string;
+    is_sample: boolean;
+    points: number;
+    order_index?: number;
+  }[];
+}
+
+export interface UpdateCodingProblemDTO {
+  game_id?: string;
+  title?: string;
+  slug?: string;
+  statement_md?: string;
+  input_format?: string;
+  output_format?: string;
+  constraints?: string;
+  time_limit_ms?: number;
+  memory_limit_mb?: number;
+  difficulty?: 'Easy' | 'Medium' | 'Hard';
+  tags?: string[];
+  sample_test_cases?: {
+    id: string;
+    problem_id: string;
+    input_data: string;
+    expected_output: string;
+    explanation?: string;
+    is_sample: boolean;
+    points: number;
+    order_index?: number;
+  }[];
 }
 
 export interface QuestionDetailAnswer {
@@ -86,6 +235,7 @@ export interface Submission {
   tab_switch_count: number;
   status_sesi: SubmissionSessionStatus;
   detail_jawaban_json: QuestionDetailAnswer[];
+  shuffled_question_ids?: string[]; // Urutan soal deterministik unik per peserta (Anti-Cheat Shuffling)
 }
 
 export interface Team {

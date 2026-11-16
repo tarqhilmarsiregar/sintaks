@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Game, Submission, Question } from '@/types/arena';
 import { Problem } from '@/types';
 import { getCodingProblemForGame } from '@/lib/problem-mapping';
+import MathText from '@/components/common/MathText';
 import {
   X,
   CheckCircle2,
@@ -36,7 +37,25 @@ export default function EditorialModal({
 }: EditorialModalProps) {
   if (!isOpen || !game || !submission) return null;
 
-  const gameQuestions = questions.filter((q) => q.id_game === game.id_game);
+  const gameQuestions = useMemo(() => {
+    if (!game) return [];
+    const raw = questions.filter((q) => q.id_game === game.id_game);
+    if (!submission?.shuffled_question_ids || submission.shuffled_question_ids.length === 0) {
+      return raw;
+    }
+    const qMap = new Map(raw.map((q) => [q.id_soal, q]));
+    const ordered: Question[] = [];
+    for (const qId of submission.shuffled_question_ids) {
+      const found = qMap.get(qId);
+      if (found) ordered.push(found);
+    }
+    for (const q of raw) {
+      if (!submission.shuffled_question_ids.includes(q.id_soal)) {
+        ordered.push(q);
+      }
+    }
+    return ordered.length === raw.length ? ordered : raw;
+  }, [questions, game, submission]);
   const matchingProblem = getCodingProblemForGame(game.id_game);
 
   return (
@@ -172,7 +191,9 @@ export default function EditorialModal({
                       <div className="text-xs font-mono text-blue-400">
                         Soal #{idx + 1} ({q.id_soal}) • {q.poin_dasar} Poin Dasar
                       </div>
-                      <h5 className="font-bold text-white text-sm mt-0.5">{q.judul}</h5>
+                      <h5 className="font-bold text-white text-sm mt-0.5">
+                        <MathText content={q.judul} inline />
+                      </h5>
                     </div>
 
                     <div>
@@ -196,9 +217,10 @@ export default function EditorialModal({
                   </div>
 
                   {/* Narasi Soal */}
-                  <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                    {q.narasi_soal}
-                  </p>
+                  <MathText
+                    content={q.narasi_soal}
+                    className="text-xs text-slate-300 leading-relaxed font-sans"
+                  />
 
                   {/* Cuplikan Kode (Jika Ada) */}
                   {q.cuplikan_kode && (
@@ -212,13 +234,15 @@ export default function EditorialModal({
                     <div className="p-2.5 rounded-lg bg-[#0b1120] border border-[#1e293b]">
                       <span className="text-slate-400 text-[10px]">Jawaban Anda:</span>
                       <div className={`font-bold mt-0.5 ${isCorrect ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {detail?.jawaban_mahasiswa || '(Tidak Terjawab)'}
+                        <MathText content={detail?.jawaban_mahasiswa || '(Tidak Terjawab)'} inline />
                       </div>
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-[#0b1120] border border-[#1e293b]">
                       <span className="text-slate-400 text-[10px]">Kunci Jawaban Resmi:</span>
-                      <div className="font-bold text-slate-200 mt-0.5">{q.kunci_jawaban}</div>
+                      <div className="font-bold text-slate-200 mt-0.5">
+                        <MathText content={q.kunci_jawaban} inline />
+                      </div>
                     </div>
                   </div>
 
@@ -228,7 +252,10 @@ export default function EditorialModal({
                       <Lightbulb className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>Editorial &amp; Pembahasan Dosen:</span>
                     </div>
-                    <p className="text-slate-200 leading-relaxed font-sans">{q.editorial}</p>
+                    <MathText
+                      content={q.editorial}
+                      className="text-slate-200 leading-relaxed font-sans"
+                    />
                   </div>
                 </div>
               );

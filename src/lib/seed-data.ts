@@ -1,4 +1,7 @@
-import { User, Game, Question, Submission, Team, FirstBloodAnnouncement, LeaderboardPlayer } from '@/types/arena';
+import { User, Game, Question, Submission, Team, FirstBloodAnnouncement, LeaderboardPlayer, Cohort } from '@/types/arena';
+
+// Kohort pembelajaran murni dinamis (hanya ada jika dibuat manual oleh Admin)
+export const INITIAL_COHORTS: Cohort[] = [];
 
 export const INITIAL_USERS: User[] = [
   // ADMIN
@@ -517,108 +520,8 @@ export const INITIAL_USERS: User[] = [
   }
 ];
 
-export const INITIAL_GAMES: Game[] = [
-  {
-    id_game: 'G1',
-    ref_pertemuan: 'Pertemuan 1',
-    judul_game: 'Onboarding Arena: Pemanasan Logika & Big-O',
-    kategori_materi: 'Big-O & Game Theory',
-    kesulitan: 'Easy',
-    mode_game: 'SOLO',
-    status_kamis: 'ENDED',
-    status_jumat: 'ENDED',
-    durasi_total_menit: 5,
-    durasi_per_soal_detik: 45,
-    min_nilai_lulus: 70,
-    total_soal: 3
-  },
-  {
-    id_game: 'G2',
-    ref_pertemuan: 'Pertemuan 1',
-    judul_game: '[KAMIS] - ANATOMI ONLINE JUDGE, ATURAN I/O, & JEBAKAN PRESISI PYTHON',
-    kategori_materi: 'Big-O & Game Theory',
-    kesulitan: 'Easy',
-    mode_game: 'SOLO',
-    status_kamis: 'ENDED',
-    status_jumat: 'UPCOMING',
-    durasi_total_menit: 6,
-    durasi_per_soal_detik: 45,
-    min_nilai_lulus: 70,
-    total_soal: 4
-  },
-  {
-    id_game: 'G3',
-    ref_pertemuan: 'Pertemuan 1',
-    judul_game: '[JUMAT] - ANATOMI ONLINE JUDGE, ATURAN I/O, & JEBAKAN PRESISI PYTHON',
-    kategori_materi: 'Big-O & Game Theory',
-    kesulitan: 'Easy',
-    mode_game: 'SOLO',
-    status_kamis: 'UPCOMING',
-    status_jumat: 'ENDED',
-    durasi_total_menit: 6,
-    durasi_per_soal_detik: 45,
-    min_nilai_lulus: 70,
-    total_soal: 4
-  },
-  {
-    id_game: 'G4',
-    ref_pertemuan: 'Pertemuan 1',
-    judul_game: '[KAMIS] - ANALISIS KOMPLEKSITAS BIG-O, ATURAN 10^8, & POLA AD-HOC',
-    kategori_materi: 'Big-O & Game Theory',
-    kesulitan: 'Medium',
-    mode_game: 'SOLO',
-    status_kamis: 'ENDED',
-    status_jumat: 'UPCOMING',
-    durasi_total_menit: 7,
-    durasi_per_soal_detik: 50,
-    min_nilai_lulus: 75,
-    total_soal: 4
-  },
-  {
-    id_game: 'G5',
-    ref_pertemuan: 'Pertemuan 1',
-    judul_game: '[JUMAT] - ANALISIS KOMPLEKSITAS BIG-O, ATURAN 10^8, & POLA AD-HOC',
-    kategori_materi: 'Big-O & Game Theory',
-    kesulitan: 'Medium',
-    mode_game: 'SOLO',
-    status_kamis: 'UPCOMING',
-    status_jumat: 'ENDED',
-    durasi_total_menit: 7,
-    durasi_per_soal_detik: 50,
-    min_nilai_lulus: 75,
-    total_soal: 4
-  },
-  {
-    id_game: 'G6',
-    ref_pertemuan: 'Pertemuan 1',
-    judul_game: '[KAMIS] - OBSERVASI INVARIAN & COMBINATORIAL GAME THEORY',
-    kategori_materi: 'Big-O & Game Theory',
-    kesulitan: 'Hard',
-    mode_game: 'TEAM',
-    pin_akses: 'TIME-882',
-    status_kamis: 'UPCOMING',
-    status_jumat: 'UPCOMING',
-    durasi_total_menit: 10,
-    durasi_per_soal_detik: 60,
-    min_nilai_lulus: 75,
-    total_soal: 4
-  },
-  {
-    id_game: 'G7',
-    ref_pertemuan: 'Pertemuan 1',
-    judul_game: '[JUMAT] - OBSERVASI INVARIAN & COMBINATORIAL GAME THEORY',
-    kategori_materi: 'Big-O & Game Theory',
-    kesulitan: 'Hard',
-    mode_game: 'TEAM',
-    pin_akses: 'TIME-993',
-    status_kamis: 'FROZEN',
-    status_jumat: 'FROZEN',
-    durasi_total_menit: 10,
-    durasi_per_soal_detik: 60,
-    min_nilai_lulus: 75,
-    total_soal: 4
-  }
-];
+// Paket kontes pembelajaran murni dinamis (hanya ada jika dibuat manual oleh Admin)
+export const INITIAL_GAMES: Game[] = [];
 
 export const INITIAL_QUESTIONS: Question[] = [
   {
@@ -714,82 +617,7 @@ export const INITIAL_QUESTIONS: Question[] = [
   }
 ];
 
-export const INITIAL_SUBMISSIONS: Submission[] = [
-  {
-    id_submission: 'SUB-2545001-G1',
-    timestamp_mulai: new Date(Date.now() - 7200000).toISOString(),
-    timestamp_update: new Date(Date.now() - 6900000).toISOString(),
-    nim: '2545001',
-    codename: 'Cecilia_AlgoStar',
-    klub_hari: 'KAMIS',
-    id_game: 'G1',
-    mode_game: 'SOLO',
-    id_tim: '',
-    skor_xp: 116,
-    nilai_akademik: 33,
-    jumlah_benar: 1,
-    total_soal: 3,
-    status_lulus: 'BELUM LULUS',
-    streak_saat_ini: 1,
-    tab_switch_count: 0,
-    status_sesi: 'DONE',
-    detail_jawaban_json: [
-      { id_soal: 'Q101', jawaban_mahasiswa: 'O(N log N)', is_correct: true, is_timeout: false, opened_hint: false, sisa_detik: 25, skor_xp_didapat: 80 },
-      { id_soal: 'Q102', jawaban_mahasiswa: '7', is_correct: false, is_timeout: false, opened_hint: false, sisa_detik: 10, skor_xp_didapat: 0 },
-      { id_soal: 'Q103', jawaban_mahasiswa: '10^6 operasi', is_correct: false, is_timeout: true, opened_hint: true, sisa_detik: 0, skor_xp_didapat: 0 }
-    ]
-  },
-  {
-    id_submission: 'SUB-2545001-G2',
-    timestamp_mulai: new Date(Date.now() - 5400000).toISOString(),
-    timestamp_update: new Date(Date.now() - 5040000).toISOString(),
-    nim: '2545001',
-    codename: 'Cecilia_AlgoStar',
-    klub_hari: 'KAMIS',
-    id_game: 'G2',
-    mode_game: 'SOLO',
-    id_tim: '',
-    skor_xp: 252,
-    nilai_akademik: 50,
-    jumlah_benar: 2,
-    total_soal: 4,
-    status_lulus: 'BELUM LULUS',
-    streak_saat_ini: 2,
-    tab_switch_count: 0,
-    status_sesi: 'DONE',
-    detail_jawaban_json: [
-      { id_soal: 'Q201', jawaban_mahasiswa: 'False', is_correct: true, is_timeout: false, opened_hint: false, sisa_detik: 32, skor_xp_didapat: 98 },
-      { id_soal: 'Q202', jawaban_mahasiswa: 'input() melakukan sanitasi string dan EOF handling berlebih yang lambat', is_correct: true, is_timeout: false, opened_hint: false, sisa_detik: 28, skor_xp_didapat: 94 },
-      { id_soal: 'Q203', jawaban_mahasiswa: 'O(N^2)', is_correct: false, is_timeout: false, opened_hint: false, sisa_detik: 15, skor_xp_didapat: 0 },
-      { id_soal: 'Q204', jawaban_mahasiswa: 'N genap', is_correct: false, is_timeout: false, opened_hint: true, sisa_detik: 10, skor_xp_didapat: 0 }
-    ]
-  },
-  {
-    id_submission: 'SUB-2545001-G4',
-    timestamp_mulai: new Date(Date.now() - 3000000).toISOString(),
-    timestamp_update: new Date(Date.now() - 2580000).toISOString(),
-    nim: '2545001',
-    codename: 'Cecilia_AlgoStar',
-    klub_hari: 'KAMIS',
-    id_game: 'G4',
-    mode_game: 'SOLO',
-    id_tim: '',
-    skor_xp: 113,
-    nilai_akademik: 25,
-    jumlah_benar: 1,
-    total_soal: 4,
-    status_lulus: 'BELUM LULUS',
-    streak_saat_ini: 1,
-    tab_switch_count: 0,
-    status_sesi: 'DONE',
-    detail_jawaban_json: [
-      { id_soal: 'Q203', jawaban_mahasiswa: 'O(N log N)', is_correct: true, is_timeout: false, opened_hint: false, sisa_detik: 40, skor_xp_didapat: 113 },
-      { id_soal: 'Q204', jawaban_mahasiswa: 'N prima', is_correct: false, is_timeout: false, opened_hint: false, sisa_detik: 12, skor_xp_didapat: 0 },
-      { id_soal: 'Q201', jawaban_mahasiswa: 'True', is_correct: false, is_timeout: true, opened_hint: false, sisa_detik: 0, skor_xp_didapat: 0 },
-      { id_soal: 'Q202', jawaban_mahasiswa: 'Tidak ada bedanya', is_correct: false, is_timeout: false, opened_hint: true, sisa_detik: 5, skor_xp_didapat: 0 }
-    ]
-  }
-];
+export const INITIAL_SUBMISSIONS: Submission[] = [];
 
 export const FIRST_BLOOD_TICKER_DATA: FirstBloodAnnouncement[] = [
   { id_soal: 'Q201', judul_soal: 'Jebakan Presisi Pembagian Python', first_blood_by: 'Tomy_FastIO' },

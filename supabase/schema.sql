@@ -7,15 +7,29 @@
 -- 1. DROP EXISTING RELATIONS (IF ANY)
 DROP TABLE IF EXISTS public.submissions CASCADE;
 DROP TABLE IF EXISTS public.questions CASCADE;
+DROP TABLE IF EXISTS public.cohort_game_access CASCADE;
 DROP TABLE IF EXISTS public.games CASCADE;
 DROP TABLE IF EXISTS public.teams CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
+DROP TABLE IF EXISTS public.cohorts CASCADE;
 
--- 2. TABEL TEAMS
+-- 2. TABEL COHORTS / KELAS PEMBELAJARAN DINAMIS
+CREATE TABLE public.cohorts (
+  id_cohort VARCHAR(50) PRIMARY KEY,
+  nama_kelas VARCHAR(120) NOT NULL,
+  kode_kelas VARCHAR(30) UNIQUE NOT NULL,
+  periode VARCHAR(30) NOT NULL, -- Format: <Ganjil/Genap> <Tahun>, misal: 'Ganjil 2025'
+  deskripsi TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_periode_format CHECK (periode ~ '^(Ganjil|Genap) [0-9]{4}$')
+);
+
+-- 3. TABEL TEAMS
 CREATE TABLE public.teams (
   id_tim VARCHAR(50) PRIMARY KEY,
   nama_tim VARCHAR(150) NOT NULL,
-  klub_hari VARCHAR(10) NOT NULL CHECK (klub_hari IN ('KAMIS', 'JUMAT', 'ALL')),
+  klub_hari VARCHAR(10) NOT NULL CHECK (klub_hari IN ('KAMIS', 'JUMAT', 'LOMBA', 'ALL')),
   kode_gabung VARCHAR(20) UNIQUE,
   leader_nim VARCHAR(30),
   daftar_nim_json JSONB NOT NULL DEFAULT '[]'::JSONB,
@@ -24,7 +38,7 @@ CREATE TABLE public.teams (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. TABEL USERS
+-- 4. TABEL USERS
 CREATE TABLE public.users (
   nim VARCHAR(30) PRIMARY KEY,
   password VARCHAR(255) NOT NULL,
@@ -35,7 +49,9 @@ CREATE TABLE public.users (
   prodi VARCHAR(80) NOT NULL,
   angkatan INT NOT NULL DEFAULT 2025,
   kelas_reguler VARCHAR(50) NOT NULL,
-  klub_hari VARCHAR(10) NOT NULL CHECK (klub_hari IN ('KAMIS', 'JUMAT', 'ALL')),
+  klub_hari VARCHAR(10) NOT NULL CHECK (klub_hari IN ('KAMIS', 'JUMAT', 'LOMBA', 'ALL')),
+  id_cohort VARCHAR(50) REFERENCES public.cohorts(id_cohort) ON DELETE SET NULL,
+  periode VARCHAR(30) DEFAULT 'Ganjil 2025',
   total_xp INT NOT NULL DEFAULT 0,
   level INT NOT NULL DEFAULT 1,
   tier_badge VARCHAR(80) NOT NULL DEFAULT '🌱 Logic Novice',
@@ -46,9 +62,10 @@ CREATE TABLE public.users (
 );
 
 CREATE INDEX idx_users_klub_hari ON public.users(klub_hari);
+CREATE INDEX idx_users_id_cohort ON public.users(id_cohort);
 CREATE INDEX idx_users_xp ON public.users(total_xp DESC);
 
--- 4. TABEL GAMES
+-- 5. TABEL GAMES
 CREATE TABLE public.games (
   id_game VARCHAR(30) PRIMARY KEY,
   ref_pertemuan VARCHAR(50) NOT NULL,
@@ -59,10 +76,19 @@ CREATE TABLE public.games (
   pin_akses VARCHAR(30),
   status_kamis VARCHAR(20) NOT NULL DEFAULT 'UPCOMING' CHECK (status_kamis IN ('UPCOMING', 'OPEN', 'FROZEN', 'ENDED')),
   status_jumat VARCHAR(20) NOT NULL DEFAULT 'UPCOMING' CHECK (status_jumat IN ('UPCOMING', 'OPEN', 'FROZEN', 'ENDED')),
+  status_lomba VARCHAR(20) NOT NULL DEFAULT 'UPCOMING' CHECK (status_lomba IN ('UPCOMING', 'OPEN', 'FROZEN', 'ENDED')),
   durasi_total_menit INT NOT NULL DEFAULT 20,
   durasi_per_soal_detik INT NOT NULL DEFAULT 60,
   min_nilai_lulus INT NOT NULL DEFAULT 70,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 6. TABEL COHORT_GAME_ACCESS (Resource Access Matrix Dinamis)
+CREATE TABLE public.cohort_game_access (
+  id_cohort VARCHAR(50) REFERENCES public.cohorts(id_cohort) ON DELETE CASCADE,
+  id_game VARCHAR(30) REFERENCES public.games(id_game) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'UPCOMING' CHECK (status IN ('UPCOMING', 'OPEN', 'FROZEN', 'ENDED')),
+  PRIMARY KEY (id_cohort, id_game)
 );
 
 -- 5. TABEL QUESTIONS
@@ -123,12 +149,26 @@ CREATE POLICY "Allow public read access to teams" ON public.teams FOR SELECT USI
 CREATE POLICY "Allow public read access to submissions" ON public.submissions FOR SELECT USING (true);
 CREATE POLICY "Allow authenticated read access to questions" ON public.questions FOR SELECT USING (true);
 
+CREATE POLICY "Allow public read access to cohorts" ON public.cohorts FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to cohort_game_access" ON public.cohort_game_access FOR SELECT USING (true);
+CREATE POLICY "Allow service all cohorts" ON public.cohorts FOR ALL USING (true);
+CREATE POLICY "Allow service all cohort_game_access" ON public.cohort_game_access FOR ALL USING (true);
+
 -- Allow full writes for development/service role
 CREATE POLICY "Allow service all users" ON public.users FOR ALL USING (true);
 CREATE POLICY "Allow service all games" ON public.games FOR ALL USING (true);
 CREATE POLICY "Allow service all questions" ON public.questions FOR ALL USING (true);
 CREATE POLICY "Allow service all submissions" ON public.submissions FOR ALL USING (true);
 CREATE POLICY "Allow service all teams" ON public.teams FOR ALL USING (true);
+
+-- ==============================================================================
+-- SEED DATA: 3 KOHORT / KELAS PEMBELAJARAN
+-- ==============================================================================
+INSERT INTO public.cohorts (id_cohort, nama_kelas, kode_kelas, periode, deskripsi)
+VALUES
+('c-kamis', 'Kelas KAMIS (SI 2025)', 'CP-SI-25-K', 'Ganjil 2025', 'Kohort praktikum Competitive Programming Kamis SI 2025'),
+('c-jumat', 'Kelas JUMAT (TI & SI 2024–2025)', 'CP-TISI-2425-J', 'Ganjil 2025', 'Kohort gabungan TI & SI praktikum Jumat'),
+('c-lomba', '🏆 Kelas LOMBA (Kompetisi / Seleksi ICPC)', 'CP-ICPC-LOMBA', 'Ganjil 2025', 'Kontingen delegasi seleksi kompetisi ICPC');
 
 -- ==============================================================================
 -- SEED DATA: 28 MAHASISWA + 1 DOSEN PEMBINA (ADMIN)

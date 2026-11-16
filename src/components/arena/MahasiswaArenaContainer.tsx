@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Game, Question, Submission, User, Team, LeaderboardPlayer } from '@/types/arena';
+import { Game, Question, Submission, User, Team, LeaderboardPlayer, KlubHari } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
 
 import TopNavbar from '@/components/arena/TopNavbar';
@@ -35,7 +35,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   const [teams, setTeams] = useState<Team[]>([]);
 
   // Filtering
-  const [leaderboardFilter, setLeaderboardFilter] = useState<'KAMIS' | 'JUMAT' | 'ALL'>('KAMIS');
+  const [leaderboardFilter, setLeaderboardFilter] = useState<KlubHari>('KAMIS');
   const [leaderboardPlayers, setLeaderboardPlayers] = useState<LeaderboardPlayer[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -100,7 +100,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   };
 
   // Handle Leaderboard Filter Change
-  const handleLeaderboardFilterChange = (filter: 'KAMIS' | 'JUMAT' | 'ALL') => {
+  const handleLeaderboardFilterChange = (filter: KlubHari) => {
     setLeaderboardFilter(filter);
     setLeaderboardPlayers(ArenaStore.getLeaderboardPlayers(filter));
   };

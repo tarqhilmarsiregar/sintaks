@@ -9,7 +9,6 @@ import { SITE_CONFIG } from '@/config/site';
 import {
   ChevronDown,
   LogOut,
-  Shield,
   User as UserIcon,
   Award,
   Zap,
@@ -99,8 +98,11 @@ export default function TopNavbar({
                   {SITE_CONFIG.subname}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-normal hidden md:block truncate">
-                {SITE_CONFIG.institution.name}
+              <p
+                className="text-[11px] text-slate-400 font-normal hidden md:block truncate"
+                title={SITE_CONFIG.institution.club}
+              >
+                {SITE_CONFIG.institution.club}
               </p>
             </div>
           </Link>
@@ -108,16 +110,6 @@ export default function TopNavbar({
 
         {/* User Identity & Dropdown Menu */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {user?.role === 'ADMIN' && (
-            <Link
-              href="/admin"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 rounded-lg bg-purple-950/60 hover:bg-purple-900/80 border border-purple-500/40 text-purple-300 text-xs font-semibold transition-colors shrink-0"
-            >
-              <Shield className="w-3.5 h-3.5 text-purple-400" />
-              <span className="hidden md:inline">Command Center Dosen</span>
-            </Link>
-          )}
-
           {user ? (
             <div className="relative shrink-0" ref={dropdownRef}>
               {/* Profile Dropdown Trigger Button */}
@@ -135,17 +127,23 @@ export default function TopNavbar({
                 {/* Monogram Professional Avatar */}
                 <UserAvatar user={user} size="sm" />
 
-                {/* Codename & Mini Level (Collapsed on mobile, fully visible on sm+) */}
+                {/* Identity & Mini Level / Role Badge (Collapsed on mobile, fully visible on sm+) */}
                 <div className="hidden sm:flex items-center gap-2 min-w-0 text-left">
                   <span
-                    className="font-bold text-white text-xs sm:text-sm font-mono truncate max-w-[100px] md:max-w-[160px]"
-                    title={user.codename}
+                    className="font-bold text-white text-xs sm:text-sm font-mono truncate max-w-[120px] md:max-w-[170px]"
+                    title={user.role === 'ADMIN' ? (user.nama_lengkap || user.codename) : user.codename}
                   >
-                    {user.codename}
+                    {user.role === 'ADMIN' ? (user.nama_lengkap || user.codename) : user.codename}
                   </span>
-                  <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 font-semibold text-[11px] font-mono select-none shrink-0">
-                    Lv.{levelInfo?.level || user.level}
-                  </span>
+                  {user.role === 'ADMIN' ? (
+                    <span className="inline-block px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-blue-400 font-semibold text-[11px] font-mono select-none shrink-0">
+                      Admin
+                    </span>
+                  ) : (
+                    <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 font-semibold text-[11px] font-mono select-none shrink-0">
+                      Lv.{levelInfo?.level || user.level}
+                    </span>
+                  )}
                 </div>
 
                 {/* Chevron Arrow */}
@@ -169,72 +167,76 @@ export default function TopNavbar({
                       <UserAvatar user={user} size="lg" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <h4 className="font-bold text-white text-sm font-mono truncate">
-                            {user.codename}
+                          <h4 className="font-bold text-white text-sm font-mono truncate" title={user.role === 'ADMIN' ? (user.nama_lengkap || user.codename) : user.codename}>
+                            {user.role === 'ADMIN' ? (user.nama_lengkap || user.codename) : user.codename}
                           </h4>
-                          <span className="text-[11px] px-1.5 py-0.2 rounded font-sans font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/25">
-                            {user.role === 'ADMIN' ? 'Dosen' : 'Mhs'}
+                          <span className="text-[11px] px-1.5 py-0.2 rounded font-sans font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/25 shrink-0">
+                            {user.role === 'ADMIN' ? 'Admin' : 'Mhs'}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-400 font-mono mt-0.5">
-                          NIM: <span className="text-slate-300 font-semibold">{user.nim}</span>
-                        </p>
+                        {user.role !== 'ADMIN' && (
+                          <p className="text-xs text-slate-400 font-mono mt-0.5">
+                            NIM: <span className="text-slate-300 font-semibold">{user.nim}</span>
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Section 2: Gamification Progress Card */}
-                    <div className="mt-3 bg-[#080d18] border border-[#1a2333] rounded-xl p-2.5 space-y-1.5">
-                      <div className="flex items-center justify-between text-xs font-mono">
-                        <span className="text-slate-300 font-medium truncate max-w-[170px]">
-                          {user.tier_badge || levelInfo?.tierBadge}
-                        </span>
-                        <span className="text-amber-400 font-bold px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20 text-[11px]">
-                          Lv.{levelInfo?.level || user.level}
-                        </span>
-                      </div>
+                    {/* Section 2: Gamification Progress Card (HANYA UNTUK MAHASISWA) */}
+                    {user.role !== 'ADMIN' && (
+                      <div className="mt-3 bg-[#080d18] border border-[#1a2333] rounded-xl p-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-mono">
+                          <span className="text-slate-300 font-medium truncate max-w-[170px]">
+                            {user.tier_badge || levelInfo?.tierBadge}
+                          </span>
+                          <span className="text-amber-400 font-bold px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20 text-[11px]">
+                            Lv.{levelInfo?.level || user.level}
+                          </span>
+                        </div>
 
-                      {/* XP Progress Bar */}
-                      <div className="space-y-1">
-                        <div className="h-1.5 w-full bg-slate-800/80 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                            style={{ width: `${levelInfo?.progressPercent || 0}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
-                          <span className="text-emerald-400 font-semibold">
-                            {(user.total_xp || 0).toLocaleString()} XP
-                          </span>
-                          <span>
-                            {levelInfo?.xpNeededForNext ? `${levelInfo.xpNeededForNext} XP lagi ke Lv.${(levelInfo.level || user.level) + 1}` : 'Max Level'}
-                          </span>
+                        {/* XP Progress Bar */}
+                        <div className="space-y-1">
+                          <div className="h-1.5 w-full bg-slate-800/80 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                              style={{ width: `${levelInfo?.progressPercent || 0}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+                            <span className="text-emerald-400 font-semibold">
+                              {(user.total_xp || 0).toLocaleString()} XP
+                            </span>
+                            <span>
+                              {levelInfo?.xpNeededForNext ? `${levelInfo.xpNeededForNext} XP lagi ke Lv.${(levelInfo.level || user.level) + 1}` : 'Max Level'}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
-                  {/* Section 3: Navigation Menu Links */}
-                  <div className="p-1.5 space-y-0.5">
-                    <Link
-                      href={user.role === 'ADMIN' ? '/admin' : '/mahasiswa/profil'}
-                      onClick={() => setIsDropdownOpen(false)}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-200 hover:text-white hover:bg-slate-800/60 transition-colors group"
-                      role="menuitem"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20 group-hover:text-blue-300 flex items-center justify-center flex-shrink-0 transition-colors">
-                        <UserIcon className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0 flex-1 text-left">
-                        <div className="text-xs font-semibold text-slate-200 group-hover:text-white">
-                          Pengaturan Profil
+                  {/* Section 3: Navigation Menu Links (HANYA UNTUK MAHASISWA) */}
+                  {user.role !== 'ADMIN' && (
+                    <div className="p-1.5 space-y-0.5">
+                      <Link
+                        href="/mahasiswa/profil"
+                        onClick={() => setIsDropdownOpen(false)}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-200 hover:text-white hover:bg-slate-800/60 transition-colors group"
+                        role="menuitem"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20 group-hover:text-blue-300 flex items-center justify-center flex-shrink-0 transition-colors">
+                          <UserIcon className="w-4 h-4" />
                         </div>
-                        <p className="text-[11px] text-slate-400">
-                          Ganti codename, avatar & identitas
-                        </p>
-                      </div>
-                    </Link>
+                        <div className="min-w-0 flex-1 text-left">
+                          <div className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                            Pengaturan Profil
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Ganti codename, avatar & identitas
+                          </p>
+                        </div>
+                      </Link>
 
-                    {user.role !== 'ADMIN' && (
                       <Link
                         href="/mahasiswa/capaian"
                         onClick={() => setIsDropdownOpen(false)}
@@ -253,8 +255,8 @@ export default function TopNavbar({
                           </p>
                         </div>
                       </Link>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {/* Section 4: Divider & Logout Action */}
                   <div className="p-1.5 pt-1 border-t border-[#1f293d]/80">

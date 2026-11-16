@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Game, Question, Submission, User } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
+import { seededShuffle } from '@/lib/shuffle';
+import MathText from '@/components/common/MathText';
 import { Clock, AlertTriangle, Lightbulb, Send, CheckCircle2, ShieldAlert, Lock } from 'lucide-react';
 import { fireConfetti } from '@/lib/confetti';
 
@@ -43,11 +45,12 @@ export default function QuizArenaModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    const gameQs = ArenaStore.getQuestions().filter(q => q.id_game === game.id_game);
-    setQuestions(gameQs);
-
     const sub = ArenaStore.startQuizSession(currentUser, game);
     setSubmission(sub);
+
+    // Ambil soal dengan urutan deterministik unik per peserta (Anti-Cheat Shuffling)
+    const gameQs = ArenaStore.getQuestionsForUser(currentUser, game.id_game, sub);
+    setQuestions(gameQs);
 
     // Hitung sisa waktu total berdasarkan timestamp_mulai
     const elapsedSeconds = Math.floor(
@@ -209,7 +212,13 @@ export default function QuizArenaModal({
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const parsedOptions = currentQ?.opsi_jawaban ? currentQ.opsi_jawaban.split('|') : [];
+  // Opsi pilihan ganda diacak deterministik per peserta & butir soal
+  const parsedOptions = useMemo(() => {
+    if (!currentQ?.opsi_jawaban) return [];
+    const raw = currentQ.opsi_jawaban.split('|');
+    if (raw.length <= 1 || !currentUser) return raw;
+    return seededShuffle(raw, `${currentUser.nim}_${currentQ.id_soal}_OPTIONS`);
+  }, [currentQ, currentUser]);
 
   return (
     <div
@@ -293,18 +302,29 @@ export default function QuizArenaModal({
         {currentQ ? (
           <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono text-blue-400 font-bold">
-                Soal {currentQIndex + 1} dari {questions.length} ({currentQ.id_soal})
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-blue-400 font-bold">
+                  Soal {currentQIndex + 1} dari {questions.length}
+                </span>
+                <span
+                  className="text-[10px] font-mono text-slate-400 bg-[#0e1626] border border-slate-700/60 px-1.5 py-0.5 rounded"
+                  title="ID Soal Internal untuk Pengawas & Dosen"
+                >
+                  Ref: {currentQ.id_soal}
+                </span>
+              </div>
               <span className="text-xs font-mono bg-blue-500/15 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded">
                 {currentQ.poin_dasar} Poin Dasar
               </span>
             </div>
 
-            <h4 className="text-base font-bold text-white">{currentQ.judul}</h4>
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans whitespace-pre-line">
-              {currentQ.narasi_soal}
-            </p>
+            <h4 className="text-base font-bold text-white">
+              <MathText content={currentQ.judul} inline />
+            </h4>
+            <MathText
+              content={currentQ.narasi_soal}
+              className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans"
+            />
 
             {/* Code Snippet Box */}
             {currentQ.cuplikan_kode && (
@@ -320,7 +340,8 @@ export default function QuizArenaModal({
                   <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-lg text-xs text-amber-200 font-mono flex items-start gap-2">
                     <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="text-amber-300">Petunjuk (Hint):</strong> {currentQ.teks_hint}
+                      <strong className="text-amber-300">Petunjuk (Hint):</strong>{' '}
+                      <MathText content={currentQ.teks_hint} inline />
                       <div className="text-[10px] text-amber-400/80 mt-1">
                         * Poin dasar dipotong -25 XP. Nilai akademik tetap utuh!
                       </div>
@@ -361,6 +382,7 @@ export default function QuizArenaModal({
                           : 'bg-[#111827] border-[#1f293d] text-slate-300 hover:bg-[#162238]'
                       }`}
                     >
+                      <MathText content={opt} inline />
                       <span>{opt}</span>
                       {selectedOption === opt && (
                         <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
