@@ -37,6 +37,29 @@ export default function EditorialModal({
 }: EditorialModalProps) {
   if (!isOpen || !game || !submission) return null;
 
+  // Anti-Cheat Guard: Editorial hanya dapat diakses setelah sesi selesai (DONE)
+  if (submission.status_sesi !== 'DONE') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="bg-[#0b1120] border border-amber-500/30 rounded-xl p-6 max-w-md w-full shadow-2xl font-mono text-center space-y-3">
+          <div className="w-12 h-12 mx-auto rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <h3 className="font-bold text-white text-base">Editorial Masih Terkunci</h3>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Pembahasan soal dan editorial hanya dapat diakses setelah sesi pengerjaan kuis selesai (Status: Selesai).
+          </p>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] text-white text-xs font-bold"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const gameQuestions = useMemo(() => {
     if (!game) return [];
     const raw = questions.filter((q) => q.id_game === game.id_game);

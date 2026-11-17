@@ -53,6 +53,8 @@ export interface User {
   tier_badge: string;
   milestones_json: string[];
   id_tim: string;
+  is_first_login?: boolean;
+  password_changed_at?: string;
 }
 
 export interface CreateUserDTO {
@@ -236,17 +238,31 @@ export interface Submission {
   status_sesi: SubmissionSessionStatus;
   detail_jawaban_json: QuestionDetailAnswer[];
   shuffled_question_ids?: string[]; // Urutan soal deterministik unik per peserta (Anti-Cheat Shuffling)
+  tab_switch_log?: { timestamp: string; penalty_deducted: number }[];
 }
 
 export interface Team {
   id_tim: string;
   nama_tim: string;
   klub_hari: KlubHari;
+  id_cohort?: string;   // ID Kohort Dinamis (Relasi ke tabel cohorts)
   kode_gabung?: string; // Kode unik 6-karakter untuk gabung tim (DOMjudge internal)
   leader_nim?: string;  // Mahasiswa pendiri / ketua tim
   daftar_nim_json: string[];
   daftar_nama_json: string[];
   total_skor_tim: number;
+}
+
+export interface TeamFairnessMetrics {
+  totalTeams: number;
+  totalStudents: number;
+  averageXP: number;
+  minXP: number;
+  maxXP: number;
+  deltaXP: number;
+  standardDeviation: number;
+  deviationPercent: number;
+  balanceRating: 'OPTIMAL' | 'GOOD' | 'MODERATE' | 'IMBALANCED';
 }
 
 export interface TeamMemberInfo {

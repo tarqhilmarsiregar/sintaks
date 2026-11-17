@@ -10,7 +10,7 @@ export const INITIAL_USERS: User[] = [
     password: 'ADMIN',
     nama_lengkap: 'Tarq Hilmar Siregar, S.Kom',
     codename: 'Grandmaster_Tarq',
-    avatar: '👑',
+    avatar: 'TH',
     role: 'ADMIN',
     prodi: 'Teknik Informatika',
     angkatan: 2020,
@@ -18,7 +18,7 @@ export const INITIAL_USERS: User[] = [
     klub_hari: 'ALL',
     total_xp: 9999,
     level: 40,
-    tier_badge: '👑 Grandmaster Time',
+    tier_badge: 'Grandmaster Time',
     milestones_json: ['FIRST_BLOOD', 'PERFECT_100', 'SPEED_DEMON', 'STREAK_3X'],
     id_tim: ''
   },
@@ -27,7 +27,7 @@ export const INITIAL_USERS: User[] = [
     password: 'dosen123',
     nama_lengkap: 'Tarq Hilmar Siregar, S.Kom',
     codename: 'Grandmaster_Tarq',
-    avatar: '👑',
+    avatar: 'TH',
     role: 'ADMIN',
     prodi: 'Teknik Informatika',
     angkatan: 2020,
@@ -35,17 +35,21 @@ export const INITIAL_USERS: User[] = [
     klub_hari: 'ALL',
     total_xp: 9999,
     level: 40,
-    tier_badge: '👑 Grandmaster Time',
+    tier_badge: 'Grandmaster Time',
     milestones_json: ['FIRST_BLOOD', 'PERFECT_100', 'SPEED_DEMON', 'STREAK_3X'],
     id_tim: ''
-  },
+  }
+];
+
+// FIXTURE KHUSUS TESTING ALGORITMA & BENCHMARK (Tidak di-load di production runtime)
+export const TEST_MOCK_STUDENTS: User[] = [
   // KELAS KAMIS (15 SI 2025)
   {
     nim: '2545001',
     password: '2545001',
     nama_lengkap: 'Cecilia Anggraini',
     codename: 'Cecilia_AlgoStar',
-    avatar: '⚡',
+    avatar: 'CA',
     role: 'PESERTA',
     prodi: 'Sistem Informasi',
     angkatan: 2025,
@@ -53,7 +57,7 @@ export const INITIAL_USERS: User[] = [
     klub_hari: 'KAMIS',
     total_xp: 481,
     level: 2,
-    tier_badge: '⚡ O(N) Sprinter',
+    tier_badge: 'O(N) Sprinter',
     milestones_json: ['SPEED_DEMON'],
     id_tim: ''
   },
@@ -62,7 +66,7 @@ export const INITIAL_USERS: User[] = [
     password: '250201002',
     nama_lengkap: 'Indra Setiawan',
     codename: 'Indra_trll',
-    avatar: '🦊',
+    avatar: 'IS',
     role: 'PESERTA',
     prodi: 'Sistem Informasi',
     angkatan: 2025,
@@ -70,7 +74,7 @@ export const INITIAL_USERS: User[] = [
     klub_hari: 'KAMIS',
     total_xp: 969,
     level: 4,
-    tier_badge: '⚡ O(N) Sprinter',
+    tier_badge: 'O(N) Sprinter',
     milestones_json: ['FIRST_BLOOD', 'STREAK_3X'],
     id_tim: ''
   },
@@ -79,7 +83,7 @@ export const INITIAL_USERS: User[] = [
     password: '250201003',
     nama_lengkap: 'Mardianus Gea',
     codename: 'Mardianus_StackHero',
-    avatar: '🛡️',
+    avatar: 'MG',
     role: 'PESERTA',
     prodi: 'Sistem Informasi',
     angkatan: 2025,
@@ -87,7 +91,7 @@ export const INITIAL_USERS: User[] = [
     klub_hari: 'KAMIS',
     total_xp: 966,
     level: 4,
-    tier_badge: '⚡ O(N) Sprinter',
+    tier_badge: 'O(N) Sprinter',
     milestones_json: ['FIRST_BLOOD', 'SPEED_DEMON'],
     id_tim: ''
   },
@@ -96,7 +100,7 @@ export const INITIAL_USERS: User[] = [
     password: '250201004',
     nama_lengkap: 'Laksman Dwi Prasetyo',
     codename: 'Laksman_DPKnight',
-    avatar: '🐉',
+    avatar: 'LP',
     role: 'PESERTA',
     prodi: 'Sistem Informasi',
     angkatan: 2025,

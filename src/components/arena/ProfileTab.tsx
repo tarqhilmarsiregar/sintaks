@@ -16,7 +16,11 @@ import {
   ArrowRight,
   AtSign,
   GraduationCap,
-  KeyRound
+  KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
+  AlertCircle,
 } from 'lucide-react';
 
 interface ProfileTabProps {
@@ -39,6 +43,15 @@ export default function ProfileTab({
   const [codename, setCodename] = useState(currentUser.codename);
   const [successMsg, setSuccessMsg] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // State Ganti Kata Sandi
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [passError, setPassError] = useState('');
+  const [passSuccess, setPassSuccess] = useState('');
+  const [isChangingPass, setIsChangingPass] = useState(false);
 
   // Fallback data resolver
   const allTeams = teams || ArenaStore.getTeams();
@@ -86,6 +99,70 @@ export default function ProfileTab({
       setTimeout(() => setSuccessMsg(false), 3000);
     } else {
       setErrorMsg('Gagal memperbarui profil di sistem.');
+    }
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassError('');
+    setPassSuccess('');
+
+    if (!oldPassword.trim()) {
+      setPassError('Kata sandi saat ini wajib diisi.');
+      return;
+    }
+    if (newPassword.trim().length < 6) {
+      setPassError('Kata sandi baru minimal 6 karakter.');
+      return;
+    }
+    if (newPassword.trim().toUpperCase() === currentUser.nim.toUpperCase()) {
+      setPassError('Kata sandi baru tidak boleh sama dengan NIM Anda demi keamanan.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPassError('Konfirmasi kata sandi baru tidak cocok.');
+      return;
+    }
+
+    setIsChangingPass(true);
+    try {
+      const res = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'change',
+          nim: currentUser.nim,
+          oldPassword: oldPassword.trim(),
+          newPassword: newPassword.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setPassError(data.error || 'Gagal memperbarui kata sandi.');
+        setIsChangingPass(false);
+        return;
+      }
+
+      setPassSuccess('Kata sandi berhasil diperbarui dengan aman!');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPassSuccess(''), 4000);
+    } catch {
+      // Fallback local store
+      const localRes = ArenaStore.changePassword(currentUser.nim, oldPassword, newPassword);
+      if (localRes.success) {
+        setPassSuccess('Kata sandi berhasil diperbarui dengan aman!');
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setTimeout(() => setPassSuccess(''), 4000);
+      } else {
+        setPassError(localRes.message);
+      }
+    } finally {
+      setIsChangingPass(false);
     }
   };
 
@@ -297,6 +374,96 @@ export default function ProfileTab({
           >
             <span>Simpan Perubahan Handle</span>
             <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </form>
+      </div>
+
+      {/* ==================================================================== */}
+      {/* 5. KEAMANAN AKUN & PERBARUI KATA SANDI (Zero AI Slop)                */}
+      {/* ==================================================================== */}
+      <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-6 shadow-sm">
+        <h4 className="font-bold text-white text-base mb-2 flex items-center gap-2">
+          <Lock className="w-4 h-4 text-amber-400" />
+          <span>Keamanan Akun &amp; Perbarui Kata Sandi</span>
+        </h4>
+        <p className="text-xs text-slate-400 font-mono mb-4 leading-relaxed">
+          Ubah kata sandi akun Anda secara berkala. Pastikan kata sandi baru tidak menggunakan NIM dan memenuhi standar keamanan (minimal 6 karakter).
+        </p>
+
+        <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-lg">
+          <div>
+            <label className="block text-xs font-mono text-slate-300 mb-1.5 font-semibold">
+              Kata Sandi Saat Ini <span className="text-rose-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+                placeholder="Masukkan kata sandi saat ini"
+                className="w-full bg-[#080d1a] border border-[#1e293b] rounded-lg px-3.5 py-2.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1"
+              >
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-xs font-mono text-slate-300 mb-1.5 font-semibold">
+                Kata Sandi Baru <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min 6 karakter"
+                className="w-full bg-[#080d1a] border border-[#1e293b] rounded-lg px-3.5 py-2.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-mono text-slate-300 mb-1.5 font-semibold">
+                Konfirmasi Kata Sandi Baru <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Ulangi kata sandi baru"
+                className="w-full bg-[#080d1a] border border-[#1e293b] rounded-lg px-3.5 py-2.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+                required
+              />
+            </div>
+          </div>
+
+          {passError && (
+            <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs font-mono flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>{passError}</span>
+            </div>
+          )}
+
+          {passSuccess && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-mono">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{passSuccess}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isChangingPass}
+            className="px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-[#1a2333] disabled:text-slate-500 text-white font-bold text-xs font-mono shadow-sm transition-colors flex items-center gap-2"
+          >
+            <span>{isChangingPass ? 'Menyimpan...' : 'Perbarui Kata Sandi'}</span>
+            <Lock className="w-3.5 h-3.5" />
           </button>
         </form>
       </div>

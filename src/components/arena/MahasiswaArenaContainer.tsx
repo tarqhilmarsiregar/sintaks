@@ -17,6 +17,7 @@ import SubmissionsHistoryTab from '@/components/arena/SubmissionsHistoryTab';
 import EditorialModal from '@/components/arena/EditorialModal';
 import QuizArenaModal from '@/components/arena/QuizArenaModal';
 import CodingArenaModal from '@/components/arena/CodingArenaModal';
+import FirstLoginOnboardingModal from '@/components/arena/FirstLoginOnboardingModal';
 import { Problem } from '@/types';
 
 interface MahasiswaArenaContainerProps {
@@ -44,10 +45,20 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   const [editorialTarget, setEditorialTarget] = useState<{ game: Game; submission: Submission } | null>(null);
   const [activeCodingProblem, setActiveCodingProblem] = useState<{ problem: Problem; sourceGame?: Game | null } | null>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
 
   // 1. Data Loader
   const loadAllData = useCallback((user: User) => {
     setCurrentUser(user);
+
+    // Cek apakah mahasiswa wajib onboarding (ganti password perdana)
+    if (user.role === 'PESERTA') {
+      const isDefaultPass = !user.password || user.password === user.nim;
+      const needsOnboard = isDefaultPass || user.is_first_login !== false;
+      setIsOnboardingModalOpen(needsOnboard);
+    } else {
+      setIsOnboardingModalOpen(false);
+    }
 
     const g = ArenaStore.getGames();
     setGames(g);
@@ -114,6 +125,14 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
       if (user) loadAllData(user);
     }
     return ok;
+  };
+
+  // Handle Onboarding Complete (Password Change Success)
+  const handleOnboardingComplete = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    setIsOnboardingModalOpen(false);
+    const user = ArenaStore.getCurrentUser();
+    if (user) loadAllData(user);
   };
 
   // Handle Unlock PIN for Team Game
@@ -365,6 +384,15 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
           problem={activeCodingProblem.problem}
           sourceGame={activeCodingProblem.sourceGame}
           onClose={() => setActiveCodingProblem(null)}
+        />
+      )}
+
+      {/* MODAL 4: Onboarding Perdana & Pembaruan Kata Sandi Mahasiswa (Zero AI Slop) */}
+      {isOnboardingModalOpen && currentUser && (
+        <FirstLoginOnboardingModal
+          isOpen={isOnboardingModalOpen}
+          currentUser={currentUser}
+          onComplete={handleOnboardingComplete}
         />
       )}
     </div>

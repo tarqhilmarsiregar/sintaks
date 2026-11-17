@@ -16,7 +16,6 @@ import {
   Code2,
   FileText,
   AlertCircle,
-  Sparkles,
 } from 'lucide-react';
 
 interface CodingArenaModalProps {

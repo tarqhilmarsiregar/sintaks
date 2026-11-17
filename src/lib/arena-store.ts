@@ -35,7 +35,8 @@ import {
   INITIAL_QUESTIONS,
   INITIAL_SUBMISSIONS,
   FIRST_BLOOD_TICKER_DATA,
-  INITIAL_TEAMS
+  INITIAL_TEAMS,
+  TEST_MOCK_STUDENTS
 } from './seed-data';
 import { calculateAcademicGrade, calculateQuestionXP, calculateLevelInfo, generateSnakeDraftTeams } from './gamification';
 import { seededShuffle } from './shuffle';
@@ -50,7 +51,8 @@ const STORAGE_KEYS = {
   TEAMS: 'cparena_teams_v2',
   FIRST_BLOODS: 'cparena_first_bloods_v2',
   CODING_PROBLEMS: 'cparena_coding_problems_v2',
-  GAME_PROBLEM_MAPPING: 'cparena_game_problem_mapping_v2'
+  GAME_PROBLEM_MAPPING: 'cparena_game_problem_mapping_v2',
+  MOCK_STUDENTS_PURGED: 'cparena_mock_students_purged_v3'
 };
 
 export class ArenaStore {
@@ -88,10 +90,37 @@ export class ArenaStore {
     const raw = this.getItem(STORAGE_KEYS.USERS);
     if (!raw) {
       this.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+      this.setItem(STORAGE_KEYS.MOCK_STUDENTS_PURGED, 'true');
       return INITIAL_USERS;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        this.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+        this.setItem(STORAGE_KEYS.MOCK_STUDENTS_PURGED, 'true');
+        return INITIAL_USERS;
+      }
+
+      // Pembersihan otomatis satu kali untuk legacy dummy students (28 mock accounts peninggalan prototype)
+      // Menjamin direktori mahasiswa murni dinamis (hanya yang diinput manual oleh Admin)
+      const hasPurged = this.getItem(STORAGE_KEYS.MOCK_STUDENTS_PURGED);
+      if (!hasPurged) {
+        const legacyMockNims = new Set(TEST_MOCK_STUDENTS.map(u => u.nim));
+        const cleaned = parsed.filter(u => !legacyMockNims.has(u.nim));
+
+        // Pastikan akun ADMIN & DOSEN001 tetap ada jika terhapus
+        for (const admin of INITIAL_USERS.filter(u => u.role === 'ADMIN')) {
+          if (!cleaned.some(u => u.nim === admin.nim)) {
+            cleaned.push(admin);
+          }
+        }
+
+        this.saveUsers(cleaned);
+        this.setItem(STORAGE_KEYS.MOCK_STUDENTS_PURGED, 'true');
+        return cleaned;
+      }
+
+      return parsed;
     } catch {
       return INITIAL_USERS;
     }
@@ -745,7 +774,11 @@ export class ArenaStore {
     try {
       const user = JSON.parse(raw) as User;
       const freshUser = this.getUsers().find(u => u.nim === user.nim);
-      return freshUser || user;
+      if (!freshUser) {
+        this.removeItem(STORAGE_KEYS.CURRENT_USER);
+        return null;
+      }
+      return freshUser;
     } catch {
       return null;
     }
@@ -759,7 +792,7 @@ export class ArenaStore {
     }
   }
 
-  public static login(nim: string, pass: string): { success: boolean; user?: User; message?: string } {
+  public static login(nim: string, pass: string): { success: boolean; user?: User; message?: string; requiresOnboarding?: boolean } {
     const users = this.getUsers();
     const cleanNim = nim.trim().toUpperCase();
     const cleanPass = pass.trim();
@@ -769,18 +802,104 @@ export class ArenaStore {
       return { success: false, message: 'NIM atau Akun tidak terdaftar di sistem STMIK TIME!' };
     }
 
-    // Default password sama dengan NIM, atau password yang tersimpan
+    // Default password sama dengan NIM jika belum diubah, atau password tersimpan jika sudah diubah
     const expectedPass = found.password || found.nim;
-    if (cleanPass !== expectedPass && cleanPass !== found.nim) {
-      return { success: false, message: 'Password salah! Default password adalah NIM Anda.' };
+    if (cleanPass !== expectedPass) {
+      return { success: false, message: 'Kata sandi salah! Periksa kembali kredensial Anda.' };
     }
 
+    const isDefaultPass = !found.password || found.password === found.nim;
+    const requiresOnboarding = found.role === 'PESERTA' && (isDefaultPass || found.is_first_login !== false);
+
     this.setCurrentUser(found);
-    return { success: true, user: found };
+    return { success: true, user: found, requiresOnboarding };
   }
 
   public static logout(): void {
     this.setCurrentUser(null);
+  }
+
+  // --- PASSWORD MANAGEMENT & ONBOARDING ---
+  public static changePassword(nim: string, oldPass: string, newPass: string): { success: boolean; message: string; user?: User } {
+    const users = this.getUsers();
+    const cleanNim = nim.trim().toUpperCase();
+    const idx = users.findIndex(u => u.nim.toUpperCase() === cleanNim);
+    if (idx === -1) {
+      return { success: false, message: 'Pengguna tidak ditemukan.' };
+    }
+
+    const user = users[idx];
+    const expectedOld = user.password || user.nim;
+    if (oldPass.trim() !== expectedOld) {
+      return { success: false, message: 'Kata sandi saat ini yang Anda masukkan tidak sesuai.' };
+    }
+
+    const trimmedNew = newPass.trim();
+    if (trimmedNew.length < 6) {
+      return { success: false, message: 'Kata sandi baru minimal harus 6 karakter.' };
+    }
+    if (trimmedNew.toUpperCase() === cleanNim) {
+      return { success: false, message: 'Kata sandi baru tidak boleh sama dengan NIM Anda demi keamanan!' };
+    }
+
+    users[idx].password = trimmedNew;
+    users[idx].is_first_login = false;
+    users[idx].password_changed_at = new Date().toISOString();
+    this.saveUsers(users);
+
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.nim.toUpperCase() === cleanNim) {
+      this.setCurrentUser(users[idx]);
+    }
+
+    return { success: true, message: 'Kata sandi berhasil diperbarui dengan aman.', user: users[idx] };
+  }
+
+  public static completeOnboarding(params: {
+    nim: string;
+    newPassword: string;
+    codename?: string;
+    avatar?: string;
+  }): { success: boolean; message: string; user?: User } {
+    const users = this.getUsers();
+    const cleanNim = params.nim.trim().toUpperCase();
+    const idx = users.findIndex(u => u.nim.toUpperCase() === cleanNim);
+    if (idx === -1) {
+      return { success: false, message: 'Pengguna tidak ditemukan.' };
+    }
+
+    const trimmedNew = params.newPassword.trim();
+    if (trimmedNew.length < 6) {
+      return { success: false, message: 'Kata sandi baru minimal harus 6 karakter.' };
+    }
+    if (trimmedNew.toUpperCase() === cleanNim) {
+      return { success: false, message: 'Kata sandi baru tidak boleh sama dengan NIM Anda demi keamanan!' };
+    }
+
+    users[idx].password = trimmedNew;
+    users[idx].is_first_login = false;
+    users[idx].password_changed_at = new Date().toISOString();
+
+    if (params.codename && params.codename.trim().length >= 3) {
+      users[idx].codename = params.codename.trim();
+    }
+
+    if (params.avatar && params.avatar.trim()) {
+      users[idx].avatar = params.avatar.trim();
+    }
+
+    this.saveUsers(users);
+
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.nim.toUpperCase() === cleanNim) {
+      this.setCurrentUser(users[idx]);
+    }
+
+    return {
+      success: true,
+      message: 'Inisialisasi akun & pembaruan kata sandi berhasil! Selamat datang di Arena.',
+      user: users[idx]
+    };
   }
 
   // --- USER PROFILE & AVATAR UPDATES ---
@@ -819,7 +938,7 @@ export class ArenaStore {
     }
 
     const role: UserRole = dto.role === 'ADMIN' ? 'ADMIN' : 'PESERTA';
-    let klubHari: KlubHari = role === 'ADMIN' ? 'ALL' : (dto.klub_hari || 'KAMIS');
+    let klubHari: KlubHari = role === 'ADMIN' ? 'ALL' : (dto.klub_hari || 'ALL');
     let idCohort = dto.id_cohort;
     let periode = dto.periode;
 
@@ -828,17 +947,22 @@ export class ArenaStore {
       if (cohort) {
         if (!periode) periode = cohort.periode;
         if (role !== 'ADMIN') {
-          if (cohort.id_cohort === 'c-jumat') klubHari = 'JUMAT';
-          else if (cohort.id_cohort === 'c-lomba') klubHari = 'LOMBA';
-          else if (cohort.id_cohort === 'c-kamis') klubHari = 'KAMIS';
+          if (cohort.kode_kelas === 'KAMIS' || cohort.kode_kelas === 'JUMAT' || cohort.kode_kelas === 'LOMBA') {
+            klubHari = cohort.kode_kelas as KlubHari;
+          } else {
+            klubHari = 'ALL';
+          }
         }
       }
     } else if (role !== 'ADMIN') {
-      if (klubHari === 'JUMAT') idCohort = 'c-jumat';
-      else if (klubHari === 'LOMBA') idCohort = 'c-lomba';
-      else idCohort = 'c-kamis';
-      const cohort = this.getCohortById(idCohort);
-      if (cohort && !periode) periode = cohort.periode;
+      const cohorts = this.getCohorts();
+      if (cohorts.length > 0) {
+        idCohort = cohorts[0].id_cohort;
+        periode = cohorts[0].periode;
+        if (cohorts[0].kode_kelas === 'KAMIS' || cohorts[0].kode_kelas === 'JUMAT' || cohorts[0].kode_kelas === 'LOMBA') {
+          klubHari = cohorts[0].kode_kelas as KlubHari;
+        }
+      }
     }
 
     if (periode) {
@@ -873,7 +997,8 @@ export class ArenaStore {
       level: 1,
       tier_badge: 'Logic Novice',
       milestones_json: [],
-      id_tim: ''
+      id_tim: '',
+      is_first_login: role === 'PESERTA'
     };
 
     users.push(newUser);
@@ -1134,15 +1259,15 @@ export class ArenaStore {
    */
   public static getQuestionsForUser(user: User | null, gameId: string, submission?: Submission | null): Question[] {
     const rawQuestions = this.getQuestions().filter(q => q.id_game === gameId);
-    if (rawQuestions.length <= 1 || !user || user.role === 'ADMIN') {
+    if (!user || user.role === 'ADMIN') {
       return rawQuestions;
     }
 
     // 1. Cek dari submission yang sudah ada / tersimpan
     const sub = submission || this.getSubmissionForGame(user.nim, gameId);
+    let ordered: Question[] = [];
     if (sub && sub.shuffled_question_ids && sub.shuffled_question_ids.length > 0) {
       const qMap = new Map(rawQuestions.map(q => [q.id_soal, q]));
-      const ordered: Question[] = [];
       for (const qId of sub.shuffled_question_ids) {
         const found = qMap.get(qId);
         if (found) ordered.push(found);
@@ -1152,14 +1277,28 @@ export class ArenaStore {
           ordered.push(q);
         }
       }
-      if (ordered.length === rawQuestions.length) {
-        return ordered;
+      if (ordered.length !== rawQuestions.length) {
+        ordered = rawQuestions;
       }
+    } else {
+      // 2. Fallback deterministik berbasis NIM + Game ID
+      const seed = `${user.nim}_${gameId}_QUIZ_SEED`;
+      ordered = seededShuffle(rawQuestions, seed);
     }
 
-    // 2. Fallback deterministik berbasis NIM + Game ID
-    const seed = `${user.nim}_${gameId}_QUIZ_SEED`;
-    return seededShuffle(rawQuestions, seed);
+    // ANTI-CHEAT SANITIZATION:
+    // Jika peserta biasa dan sesi kuis belum selesai (status_sesi !== 'DONE'),
+    // buang kunci_jawaban & editorial agar tidak dapat diintip via Network / Memory!
+    const isDone = sub && sub.status_sesi === 'DONE';
+    if (!isDone) {
+      return ordered.map(q => ({
+        ...q,
+        kunci_jawaban: undefined,
+        editorial: undefined
+      }));
+    }
+
+    return ordered;
   }
 
   /**
@@ -1307,6 +1446,14 @@ export class ArenaStore {
     // Potong langsung 5 XP per pelanggaran
     subs[idx].skor_xp = Math.max(0, subs[idx].skor_xp - 5);
     subs[idx].timestamp_update = new Date().toISOString();
+
+    if (!subs[idx].tab_switch_log) {
+      subs[idx].tab_switch_log = [];
+    }
+    subs[idx].tab_switch_log.push({
+      timestamp: subs[idx].timestamp_update,
+      penalty_deducted: 5
+    });
 
     this.saveSubmissions(subs);
     return subs[idx];
@@ -1889,10 +2036,42 @@ export class ArenaStore {
     return newPin;
   }
 
-  public static generateTeamsForClass(klubHari: KlubHari): Team[] {
+  public static generateTeamsForCohort(
+    cohortIdOrKlub: string,
+    targetTeamSize: number = 3
+  ): { success: boolean; message: string; teams: Team[] } {
     const users = this.getUsers();
-    const existingTeams = this.getTeams().filter(t => t.klub_hari !== klubHari);
-    const newTeams = generateSnakeDraftTeams(users, klubHari, 3);
+    const cohort = this.getCohortById(cohortIdOrKlub);
+    const cohortName = cohort?.nama_kelas || cohortIdOrKlub;
+
+    // Filter tim yang ada, keluarkan tim lama dari kohort/klub ini
+    const existingTeams = this.getTeams().filter(t => {
+      if (t.id_cohort && (t.id_cohort === cohortIdOrKlub || (cohort && t.id_cohort === cohort.id_cohort))) return false;
+      if (t.klub_hari && t.klub_hari === cohortIdOrKlub) return false;
+      return true;
+    });
+
+    // Reset id_tim mahasiswa yang sebelumnya ada di tim kelas ini
+    const previousTeams = this.getTeams().filter(t => {
+      if (t.id_cohort && (t.id_cohort === cohortIdOrKlub || (cohort && t.id_cohort === cohort.id_cohort))) return true;
+      if (t.klub_hari && t.klub_hari === cohortIdOrKlub) return true;
+      return false;
+    });
+    const previousNims = new Set(previousTeams.flatMap(t => t.daftar_nim_json));
+    users.forEach(u => {
+      if (previousNims.has(u.nim)) {
+        u.id_tim = '';
+      }
+    });
+
+    const newTeams = generateSnakeDraftTeams(users, cohortIdOrKlub, targetTeamSize, cohortName);
+    if (newTeams.length === 0) {
+      return {
+        success: false,
+        message: `Tidak ada mahasiswa peserta aktif di kelas ${cohortName} untuk dibentuk menjadi tim.`,
+        teams: []
+      };
+    }
 
     const merged = [...existingTeams, ...newTeams];
     this.saveTeams(merged);
@@ -1908,20 +2087,139 @@ export class ArenaStore {
     });
     this.saveUsers(users);
 
-    return newTeams;
+    return {
+      success: true,
+      message: `Berhasil membentuk ${newTeams.length} tim berimbang (Snake-Draft) untuk ${cohortName}!`,
+      teams: newTeams
+    };
   }
 
-  public static disbandTeamsForClass(klubHari: KlubHari): void {
-    const existingTeams = this.getTeams().filter(t => t.klub_hari !== klubHari);
-    this.saveTeams(existingTeams);
+  public static generateTeamsForClass(klubHari: KlubHari): Team[] {
+    const res = this.generateTeamsForCohort(klubHari, 3);
+    return res.teams;
+  }
+
+  public static disbandTeamsForCohort(cohortIdOrKlub: string): { success: boolean; message: string; disbandedCount: number } {
+    const cohort = this.getCohortById(cohortIdOrKlub);
+    const cohortName = cohort?.nama_kelas || cohortIdOrKlub;
+
+    const allTeams = this.getTeams();
+    const teamsToKeep = allTeams.filter(t => {
+      if (t.id_cohort && (t.id_cohort === cohortIdOrKlub || (cohort && t.id_cohort === cohort.id_cohort))) return false;
+      if (t.klub_hari && t.klub_hari === cohortIdOrKlub) return false;
+      return true;
+    });
+    const disbandedCount = allTeams.length - teamsToKeep.length;
+
+    this.saveTeams(teamsToKeep);
 
     const users = this.getUsers();
     users.forEach(u => {
-      if (u.klub_hari === klubHari) {
+      const matchCohort = u.id_cohort && (u.id_cohort === cohortIdOrKlub || (cohort && u.id_cohort === cohort.id_cohort));
+      const matchKlub = u.klub_hari && u.klub_hari === cohortIdOrKlub;
+      if (matchCohort || matchKlub) {
         u.id_tim = '';
       }
     });
     this.saveUsers(users);
+
+    return {
+      success: true,
+      message: `Seluruh tim (${disbandedCount} tim) di kelas ${cohortName} berhasil dibubarkan.`,
+      disbandedCount
+    };
+  }
+
+  public static disbandTeamsForClass(klubHari: KlubHari): void {
+    this.disbandTeamsForCohort(klubHari);
+  }
+
+  public static updateTeamDetails(
+    idTim: string,
+    updates: { nama_tim?: string; leader_nim?: string }
+  ): { success: boolean; message: string; team?: Team } {
+    const teams = this.getTeams();
+    const teamIdx = teams.findIndex(t => t.id_tim === idTim);
+    if (teamIdx === -1) {
+      return { success: false, message: 'Tim tidak ditemukan.' };
+    }
+
+    const team = teams[teamIdx];
+    if (updates.nama_tim && updates.nama_tim.trim()) {
+      team.nama_tim = updates.nama_tim.trim();
+    }
+    if (updates.leader_nim) {
+      if (!team.daftar_nim_json.includes(updates.leader_nim)) {
+        return { success: false, message: 'Mahasiswa terpilih bukan anggota dari tim ini.' };
+      }
+      team.leader_nim = updates.leader_nim;
+    }
+
+    teams[teamIdx] = team;
+    this.saveTeams(teams);
+
+    return {
+      success: true,
+      message: `Informasi tim "${team.nama_tim}" berhasil diperbarui.`,
+      team
+    };
+  }
+
+  public static moveTeamMember(
+    nim: string,
+    targetTeamId: string
+  ): { success: boolean; message: string } {
+    const users = this.getUsers();
+    const student = users.find(u => u.nim === nim);
+    if (!student) {
+      return { success: false, message: 'Mahasiswa tidak ditemukan.' };
+    }
+
+    const teams = this.getTeams();
+    const targetTeamIdx = teams.findIndex(t => t.id_tim === targetTeamId);
+    if (targetTeamIdx === -1) {
+      return { success: false, message: 'Tim tujuan tidak ditemukan.' };
+    }
+
+    const sourceTeamIdx = teams.findIndex(t => t.daftar_nim_json.includes(nim));
+    if (sourceTeamIdx === targetTeamIdx) {
+      return { success: false, message: 'Mahasiswa sudah berada di tim ini.' };
+    }
+
+    // Keluarkan dari tim lama jika ada
+    if (sourceTeamIdx !== -1) {
+      const src = teams[sourceTeamIdx];
+      const memberIdx = src.daftar_nim_json.indexOf(nim);
+      src.daftar_nim_json.splice(memberIdx, 1);
+      src.daftar_nama_json.splice(memberIdx, 1);
+      src.total_skor_tim = Math.max(0, src.total_skor_tim - student.total_xp);
+      if (src.leader_nim === nim) {
+        src.leader_nim = src.daftar_nim_json.length > 0 ? src.daftar_nim_json[0] : undefined;
+      }
+    }
+
+    // Masukkan ke tim tujuan
+    const dest = teams[targetTeamIdx];
+    dest.daftar_nim_json.push(student.nim);
+    dest.daftar_nama_json.push(`${student.nama_lengkap} (${student.codename})`);
+    dest.total_skor_tim += student.total_xp;
+    if (!dest.leader_nim) {
+      dest.leader_nim = student.nim;
+    }
+
+    this.saveTeams(teams);
+
+    // Update user
+    const uIdx = users.findIndex(u => u.nim === nim);
+    if (uIdx !== -1) {
+      users[uIdx].id_tim = targetTeamId;
+      this.saveUsers(users);
+    }
+
+    return {
+      success: true,
+      message: `Mahasiswa ${student.nama_lengkap} berhasil dipindahkan ke tim "${dest.nama_tim}".`
+    };
   }
 
   public static resetUserProgress(nim: string): boolean {
@@ -2069,7 +2367,9 @@ export class ArenaStore {
     this.removeItem(STORAGE_KEYS.SUBMISSIONS);
     this.removeItem(STORAGE_KEYS.TEAMS);
     this.removeItem(STORAGE_KEYS.FIRST_BLOODS);
+    this.setItem(STORAGE_KEYS.MOCK_STUDENTS_PURGED, 'true');
     this.memoryStore = {};
+    this.memoryStore[STORAGE_KEYS.MOCK_STUDENTS_PURGED] = 'true';
   }
 }
 

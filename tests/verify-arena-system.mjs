@@ -2,13 +2,17 @@ import {
   calculateAcademicGrade,
   calculateQuestionXP,
   calculateLevelInfo,
-  generateSnakeDraftTeams
+  generateSnakeDraftTeams,
+  calculateTeamFairnessMetrics
 } from '../src/lib/gamification.ts';
-import { INITIAL_USERS, INITIAL_GAMES, INITIAL_QUESTIONS } from '../src/lib/seed-data.ts';
+import { INITIAL_USERS, TEST_MOCK_STUDENTS, INITIAL_GAMES, INITIAL_QUESTIONS } from '../src/lib/seed-data.ts';
 import { ArenaStore } from '../src/lib/arena-store.ts';
 import { ICPC_PROBLEMS_DEF } from '../src/types/arena.ts';
 import { seededShuffle, stringToSeed } from '../src/lib/shuffle.ts';
 import { parseMathSegments, formatMathString, SYMBOL_MAP } from '../src/lib/math-parser.ts';
+import { generateAcademicExportData } from '../src/lib/export-service.ts';
+import fs from 'fs';
+import path from 'path';
 
 console.log('🧪 ========================================================');
 console.log('🧪 STMIK TIME — CP ARENA: SYSTEM VERIFICATION SUITE');
@@ -29,17 +33,19 @@ function assert(condition, testName) {
 }
 
 // 1. UJI SKEMA PENGGUNA & KOHORT KELAS STMIK TIME
-console.log('--- [TEST GROUP 1: Pengguna & Kohort Kelas (28 Mahasiswa + 1 Dosen)] ---');
-const kamisStudents = INITIAL_USERS.filter(u => u.role === 'PESERTA' && u.klub_hari === 'KAMIS');
-const jumatStudents = INITIAL_USERS.filter(u => u.role === 'PESERTA' && u.klub_hari === 'JUMAT');
+console.log('--- [TEST GROUP 1: Pengguna & Kohort Kelas (Clean Slate Production + Fixture)] ---');
 const adminUsers = INITIAL_USERS.filter(u => u.role === 'ADMIN');
+const prodStudents = INITIAL_USERS.filter(u => u.role === 'PESERTA');
+assert(prodStudents.length === 0, `Produksi Bersih: 0 Mahasiswa Dummy pada INITIAL_USERS (Aktual: ${prodStudents.length})`);
+assert(adminUsers.length >= 2, `Akun Admin & Dosen Pembina terdaftar (Aktual: ${adminUsers.length})`);
 
-assert(kamisStudents.length === 15, `Kelas KAMIS memiliki tepat 15 Mahasiswa SI 2025 (Aktual: ${kamisStudents.length})`);
-assert(jumatStudents.length === 13, `Kelas JUMAT memiliki tepat 13 Mahasiswa TI/SI 2024-2025 (Aktual: ${jumatStudents.length})`);
-assert(adminUsers.length >= 1, `Akun Admin Pembina Tarq Hilmar Siregar terdaftar`);
+const kamisStudents = TEST_MOCK_STUDENTS.filter(u => u.role === 'PESERTA' && u.klub_hari === 'KAMIS');
+const jumatStudents = TEST_MOCK_STUDENTS.filter(u => u.role === 'PESERTA' && u.klub_hari === 'JUMAT');
+assert(kamisStudents.length === 15, `Fixture: Kelas KAMIS memiliki tepat 15 Mahasiswa SI 2025 (Aktual: ${kamisStudents.length})`);
+assert(jumatStudents.length === 13, `Fixture: Kelas JUMAT memiliki tepat 13 Mahasiswa TI/SI 2024-2025 (Aktual: ${jumatStudents.length})`);
 
-const cecilia = INITIAL_USERS.find(u => u.nim === '2545001');
-assert(cecilia !== undefined, 'Mahasiswa 2545001 (Cecilia_AlgoStar) terdaftar');
+const cecilia = TEST_MOCK_STUDENTS.find(u => u.nim === '2545001');
+assert(cecilia !== undefined, 'Mahasiswa 2545001 (Cecilia_AlgoStar) terdaftar di fixture');
 assert(cecilia?.codename === 'Cecilia_AlgoStar', 'Codename Cecilia_AlgoStar valid');
 assert(cecilia?.klub_hari === 'KAMIS', 'Cecilia terdaftar di Kelas KAMIS');
 
@@ -97,7 +103,7 @@ assert(lvlGrandmaster.tierBadge === '👑 Grandmaster Time', 'Level 40 Tier = Gr
 
 // 5. UJI ALGORITMA SNAKE-DRAFT TIM BERIMBANG
 console.log('\n--- [TEST GROUP 5: Algoritma Snake-Draft Tim Berimbang] ---');
-const teamsKamis = generateSnakeDraftTeams(INITIAL_USERS, 'KAMIS', 3);
+const teamsKamis = generateSnakeDraftTeams(TEST_MOCK_STUDENTS, 'KAMIS', 3);
 assert(teamsKamis.length === 5, `15 Mahasiswa SI 2025 dibagi menjadi 5 Tim (Aktual: ${teamsKamis.length})`);
 teamsKamis.forEach((t, i) => {
   assert(t.daftar_nim_json.length === 3, `Tim #${i + 1} (${t.nama_tim}) memiliki 3 anggota`);
@@ -106,7 +112,7 @@ teamsKamis.forEach((t, i) => {
   assert(t.leader_nim === t.daftar_nim_json[0], `Tim #${i + 1} menunjuk draft pick pertama sebagai leader (${t.leader_nim})`);
 });
 
-const teamsJumat = generateSnakeDraftTeams(INITIAL_USERS, 'JUMAT', 3);
+const teamsJumat = generateSnakeDraftTeams(TEST_MOCK_STUDENTS, 'JUMAT', 3);
 assert(teamsJumat.length === 5, `13 Mahasiswa TI/SI 2024-2025 dibagi menjadi 5 Tim (Aktual: ${teamsJumat.length})`);
 
 // 6. UJI INTEGRITAS INISIALISASI PAKET GAMES (100% MURNI DINAMIS)
@@ -287,11 +293,13 @@ console.log('\n--- [TEST GROUP 11: Engine Tim & Kode Gabung 6-Karakter (DOMjudge
 
 // Reset store state untuk testing
 ArenaStore.resetGlobal();
+// Inisialisasi roster mahasiswa fixture untuk pengujian engine tim, scoreboard & sesi
+ArenaStore.saveUsers([...INITIAL_USERS, ...TEST_MOCK_STUDENTS]);
 
-const mhsA = INITIAL_USERS.find(u => u.nim === '2545001'); // Cecilia
-const mhsB = INITIAL_USERS.find(u => u.nim === '250201002'); // Indra
-const mhsC = INITIAL_USERS.find(u => u.nim === '250201003'); // Mardianus
-const mhsD = INITIAL_USERS.find(u => u.nim === '250201004'); // Laksman
+const mhsA = TEST_MOCK_STUDENTS.find(u => u.nim === '2545001'); // Cecilia
+const mhsB = TEST_MOCK_STUDENTS.find(u => u.nim === '250201002'); // Indra
+const mhsC = TEST_MOCK_STUDENTS.find(u => u.nim === '250201003'); // Mardianus
+const mhsD = TEST_MOCK_STUDENTS.find(u => u.nim === '250201004'); // Laksman
 
 // 11.1 Generator Kode Unik 6 Karakter
 const generatedCode = ArenaStore.generateTeamJoinCode();
@@ -1078,8 +1086,8 @@ const shuffleB = seededShuffle(sampleList, '250201002_G1');
 assert(JSON.stringify(shuffleA1) !== JSON.stringify(shuffleB), 'Anti-Cheat Diversity: Dua mahasiswa berbeda (Cecilia vs Indra) mendapatkan urutan soal yang berbeda');
 
 // 19.3 Uji getQuestionsForUser & Sesi Submisi
-const mhsCecilia = INITIAL_USERS.find(u => u.nim === '2545001');
-const mhsIndra = INITIAL_USERS.find(u => u.nim === '250201002');
+const mhsCecilia = TEST_MOCK_STUDENTS.find(u => u.nim === '2545001');
+const mhsIndra = TEST_MOCK_STUDENTS.find(u => u.nim === '250201002');
 const targetGame = ArenaStore.getGames().find(g => g.id_game === 'G1') || ArenaStore.getGames()[0];
 
 const qsCecilia = ArenaStore.getQuestionsForUser(mhsCecilia, targetGame.id_game);
@@ -1104,12 +1112,16 @@ assert(subCecilia.shuffled_question_ids.length === qsCecilia.length, 'Jumlah shu
 const reloadedQs = ArenaStore.getQuestionsForUser(mhsCecilia, targetGame.id_game, subCecilia);
 assert(JSON.stringify(reloadedQs.map(q => q.id_soal)) === JSON.stringify(subCecilia.shuffled_question_ids), 'Simulasi reload/refresh: Urutan soal mahasiswa 100% konsisten dan tidak berubah');
 
-// 19.5 Uji decoupling penilaian (Answer by ID Soal, bukan index)
+// 19.5 Uji Anti-Cheat Protection & decoupling penilaian (Answer by ID Soal, bukan index)
 const firstQ = reloadedQs[0];
+assert(firstQ.kunci_jawaban === undefined, 'Anti-Cheat: Kunci jawaban terlindung (undefined) pada sesi aktif peserta');
+assert(firstQ.editorial === undefined, 'Anti-Cheat: Editorial terlindung (undefined) pada sesi aktif peserta');
+
+const secretQ = ArenaStore.getQuestions().find(q => q.id_soal === firstQ.id_soal);
 const answerResult = ArenaStore.answerQuestion({
   submissionId: subCecilia.id_submission,
   idSoal: firstQ.id_soal,
-  jawaban: firstQ.kunci_jawaban || 'A',
+  jawaban: secretQ?.kunci_jawaban || 'A',
   isTimeout: false,
   openedHint: false,
   sisaDetik: 30
@@ -1156,6 +1168,480 @@ assert(inlineCode !== undefined && inlineCode.code === 'x ** y', 'Inline code `x
 // 20.5 End-to-End Formatted String Test
 const formatted = formatMathString('Batas N <= 10**8 dan kompleksitas O(N**2) dengan `return x ** 2`');
 assert(formatted === 'Batas N ≤ 10^8 dan kompleksitas O(N^2) dengan `return x ** 2`', 'Format string akhir terkonversi sempurna tanpa merusak kode');
+
+// ========================================================
+// TEST GROUP 21: Dynamic Cohort Snake-Draft, Fairness Analytics & Squad Management
+// ========================================================
+console.log('\n--- [TEST GROUP 21: Dynamic Cohort Snake-Draft, Fairness Analytics & Squad Management] ---');
+
+// 21.1 Pembuatan Kohort Dinamis & Mahasiswa untuk Uji Draft
+const draftCohortRes = ArenaStore.createCohort({
+  nama_kelas: 'Kelas Tim Dinamis 2026',
+  kode_kelas: 'TEAM-DYN-26',
+  periode: 'Ganjil 2026'
+});
+assert(draftCohortRes.success === true, 'Berhasil membuat kohort dinamis untuk uji snake-draft');
+const draftCohortId = draftCohortRes.cohort.id_cohort;
+
+// Daftarkan 6 mahasiswa dengan sebaran XP bervariasi
+const mockStudentNims = ['2601001', '2601002', '2601003', '2601004', '2601005', '2601006'];
+const mockXPs = [1200, 950, 800, 650, 500, 300];
+
+mockStudentNims.forEach((nim, idx) => {
+  ArenaStore.createUser({
+    nim,
+    nama_lengkap: `Peserta Uji Draft #${idx + 1}`,
+    role: 'PESERTA',
+    id_cohort: draftCohortId
+  });
+  const users = ArenaStore.getUsers();
+  const u = users.find(usr => usr.nim === nim);
+  if (u) {
+    u.total_xp = mockXPs[idx];
+    ArenaStore.saveUsers(users);
+  }
+});
+
+// 21.2 Snake Draft dengan Ukuran Tim Kustom (3 Orang per Tim -> 2 Tim)
+const draftRes = ArenaStore.generateTeamsForCohort(draftCohortId, 3);
+assert(draftRes.success === true, 'Admin berhasil menjalankan snake-draft untuk kohort dinamis');
+assert(draftRes.teams.length === 2, `Tepat 2 tim terbentuk dari 6 mahasiswa (Aktual: ${draftRes.teams.length})`);
+
+const teamA = draftRes.teams[0];
+const teamB = draftRes.teams[1];
+
+// Distribusi Snake:
+// Rank 1 (1200) -> Tim A
+// Rank 2 (950) -> Tim B
+// Rank 3 (800) -> Tim B
+// Rank 4 (650) -> Tim A
+// Rank 5 (500) -> Tim A
+// Rank 6 (300) -> Tim B
+// Tim A total: 1200 + 650 + 500 = 2350 XP
+// Tim B total: 950 + 800 + 300 = 2050 XP
+assert(teamA.total_skor_tim === 2350, `Skor Tim A terhitung akurat: 2350 XP (Aktual: ${teamA.total_skor_tim})`);
+assert(teamB.total_skor_tim === 2050, `Skor Tim B terhitung akurat: 2050 XP (Aktual: ${teamB.total_skor_tim})`);
+assert(teamA.leader_nim === '2601001', 'Mahasiswa XP tertinggi di Tim A ditunjuk otomatis sebagai Leader');
+assert(teamB.leader_nim === '2601002', 'Mahasiswa XP tertinggi di Tim B ditunjuk otomatis sebagai Leader');
+assert(Boolean(teamA.kode_gabung && teamA.kode_gabung.length === 6), `Tim A memiliki kode gabung valid (${teamA.kode_gabung})`);
+assert(Boolean(teamB.kode_gabung && teamB.kode_gabung.length === 6), `Tim B memiliki kode gabung valid (${teamB.kode_gabung})`);
+
+// Verifikasi sinkronisasi user.id_tim
+const user1 = ArenaStore.getUsers().find(u => u.nim === '2601001');
+assert(user1?.id_tim === teamA.id_tim, 'User 2601001 terikat dengan id_tim Tim A');
+
+// 21.3 Perhitungan Metrik Fairness & Deviasi XP (calculateTeamFairnessMetrics)
+const metrics = calculateTeamFairnessMetrics(draftRes.teams);
+assert(metrics.totalTeams === 2, 'Metrik mencatat 2 tim aktif');
+assert(metrics.totalStudents === 6, 'Metrik mencatat 6 mahasiswa terlibat');
+assert(metrics.averageXP === 2200, `Rata-rata skor tim: 2200 XP (Aktual: ${metrics.averageXP})`);
+assert(metrics.deltaXP === 300, `Delta disparitas Max-Min: 300 XP (Aktual: ${metrics.deltaXP})`);
+assert(metrics.balanceRating === 'OPTIMAL', `Rating keseimbangan algoritma adalah OPTIMAL (Aktual: ${metrics.balanceRating})`);
+
+// 21.4 Ubah Pengaturan Skuad (updateTeamDetails: Ganti Nama & Leader)
+const updateTeamRes = ArenaStore.updateTeamDetails(teamA.id_tim, {
+  nama_tim: 'Vanguard Cyber TIME',
+  leader_nim: '2601004'
+});
+assert(updateTeamRes.success === true, 'Admin berhasil memperbarui nama tim dan leader');
+assert(updateTeamRes.team?.nama_tim === 'Vanguard Cyber TIME', 'Nama tim berhasil diubah');
+assert(updateTeamRes.team?.leader_nim === '2601004', 'Leader berhasil dipindahkan ke anggota terpilih');
+
+// 21.5 Pindahkan Anggota Antar Skuad (moveTeamMember)
+const moveRes = ArenaStore.moveTeamMember('2601005', teamB.id_tim);
+assert(moveRes.success === true, 'Admin berhasil memindahkan anggota dari Tim A ke Tim B');
+const teamBAfterMove = ArenaStore.getTeams().find(t => t.id_tim === teamB.id_tim);
+assert(teamBAfterMove?.daftar_nim_json.includes('2601005') === true, 'Mahasiswa terdaftar di Tim B setelah pindah');
+assert(teamBAfterMove?.daftar_nim_json.length === 4, 'Jumlah anggota Tim B bertambah menjadi 4');
+
+// 21.6 Bubarkan 1 Tim Spesifik (disbandTeam)
+const disbandSingleRes = ArenaStore.disbandTeam(teamA.id_tim, 'ADMIN');
+assert(disbandSingleRes.success === true, 'Admin berhasil membubarkan 1 tim spesifik');
+assert(ArenaStore.getTeams().some(t => t.id_tim === teamA.id_tim) === false, 'Tim A benar-benar terhapus dari repositori');
+
+// 21.7 Bubarkan Seluruh Tim Kelas (disbandTeamsForCohort)
+const disbandCohortTeamsRes = ArenaStore.disbandTeamsForCohort(draftCohortId);
+assert(disbandCohortTeamsRes.success === true, 'Admin berhasil membubarkan seluruh tim di kelas dinamis');
+assert(ArenaStore.getTeams().some(t => t.id_cohort === draftCohortId) === false, 'Tidak ada lagi tim tersisa untuk kelas ini (0 tim)');
+const userMoved = ArenaStore.getUsers().find(u => u.nim === '2601005');
+assert(userMoved?.id_tim === '', 'Status id_tim mahasiswa dilepaskan setelah kelas dibubarkan');
+
+// 22. UJI MULTI-SHEET ACADEMIC EXPORT & DATA TRANSFORMER ENGINE
+console.log('\n--- [TEST GROUP 22: Multi-Sheet Academic Report & Dynamic Export Engine] ---');
+
+// 22.1 Ekspor Rekap Total (Seluruh Kelas & Kohort)
+const exportAll = generateAcademicExportData({
+  users: ArenaStore.getUsers(),
+  submissions: ArenaStore.getSubmissions(),
+  games: ArenaStore.getGames(),
+  cohorts: ArenaStore.getCohorts(),
+  targetCohortIdOrCode: 'ALL'
+});
+
+assert(exportAll.targetCode === 'ALL', 'Target kode rekap global adalah ALL');
+assert(exportAll.targetTitle === 'Semua Kelas & Kohort', 'Target title rekap global sesuai');
+assert(exportAll.fileName.startsWith('STMIK_TIME_CP_ARENA_ALL_'), `Nama file ekspor memuat prefix resmi (${exportAll.fileName})`);
+assert(Array.isArray(exportAll.rekapNilaiData), 'rekapNilaiData berupa array');
+assert(Array.isArray(exportAll.diagnostikData), 'diagnostikData berupa array');
+assert(Array.isArray(exportAll.logDetailData), 'logDetailData berupa array');
+assert(exportAll.studentCount === ArenaStore.getUsers().filter(u => u.role === 'PESERTA').length, 'Jumlah baris mahasiswa rekap global akurat');
+
+// 22.2 Ekspor Spesifik Kohort Dinamis
+const testCohort = ArenaStore.getCohorts()[0];
+if (testCohort) {
+  const exportCohort = generateAcademicExportData({
+    users: ArenaStore.getUsers(),
+    submissions: ArenaStore.getSubmissions(),
+    games: ArenaStore.getGames(),
+    cohorts: ArenaStore.getCohorts(),
+    targetCohortIdOrCode: testCohort.id_cohort,
+    targetCohortName: testCohort.nama_kelas
+  });
+
+  assert(exportCohort.targetCode === testCohort.kode_kelas, `Target kode ekspor kohort sesuai kode kelas (${exportCohort.targetCode})`);
+  assert(exportCohort.targetTitle === testCohort.nama_kelas, 'Target title ekspor kohort sesuai nama kelas');
+  assert(exportCohort.fileName.startsWith(`STMIK_TIME_CP_ARENA_${testCohort.kode_kelas}_`), 'Prefix nama file memuat kode kelas');
+  exportCohort.rekapNilaiData.forEach(row => {
+    assert(row.Kelas_Kohort.includes(testCohort.nama_kelas) || row.Kelas_Kohort.includes(testCohort.kode_kelas), `Mahasiswa ${row.NIM} terkonfirmasi bagian dari kohort`);
+  });
+}
+
+// 22.3 Uji Integritas Kalkulasi Nilai & Status Ketuntasan
+const mockStudentWithHighGrade = {
+  nim: '2699001',
+  nama_lengkap: 'Budi Santoso',
+  role: 'PESERTA',
+  id_cohort: 'c_test_grade',
+  total_xp: 950,
+  level: 4,
+  tier_badge: 'O(N) Sprinter'
+};
+const mockHighSub = {
+  id_submission: 'SUB-TEST-HIGH',
+  nim: '2699001',
+  id_game: 'G1',
+  nilai_akademik: 85,
+  tab_switch_count: 1,
+  status_sesi: 'DONE',
+  status_lulus: 'LULUS',
+  skor_xp: 150
+};
+const mockCohortGrade = {
+  id_cohort: 'c_test_grade',
+  nama_kelas: 'Kelas Uji Nilai',
+  kode_kelas: 'UJI-NILAI',
+  periode: 'Ganjil 2025',
+  allowed_game_ids: ['G1']
+};
+
+const exportGradingTest = generateAcademicExportData({
+  users: [mockStudentWithHighGrade],
+  submissions: [mockHighSub],
+  games: [{ id_game: 'G1', judul_game: 'Test Game', pin_sesi: '123' }],
+  cohorts: [mockCohortGrade],
+  targetCohortIdOrCode: 'c_test_grade'
+});
+
+assert(exportGradingTest.rekapNilaiData.length === 1, 'Hasil rekap memuat 1 mahasiswa uji');
+const rowBudi = exportGradingTest.rekapNilaiData[0];
+assert(rowBudi.Rata_Nilai_Akhir === 85, 'Rata-rata nilai akhir terhitung 85');
+assert(rowBudi.Status_Ketuntasan === 'TUNTAS', 'Nilai >= 70 berstatus TUNTAS');
+assert(rowBudi.Akumulasi_Penalti === '-5', 'Akumulasi penalti 1x tab switch adalah -5');
+assert(exportGradingTest.diagnostikData[0].Indikasi_Akademik === '🟢 Sangat Menguasai', 'XP >= 800 terindikasi Sangat Menguasai');
+assert(exportGradingTest.logDetailData.length === 1, 'Log detail memuat 1 submisi');
+assert(exportGradingTest.logDetailData[0].Penalti_Tab === 5, 'Log submisi mencatat penalti tab 5 poin');
+
+// 22.4 Uji Kohort Kosong (Cold Start Resilience)
+const exportEmptyCohort = generateAcademicExportData({
+  users: [],
+  submissions: [],
+  games: [],
+  cohorts: [mockCohortGrade],
+  targetCohortIdOrCode: 'c_test_grade'
+});
+
+assert(exportEmptyCohort.studentCount === 0, 'Kohort kosong mencatat 0 mahasiswa tanpa error');
+assert(exportEmptyCohort.submissionCount === 0, 'Kohort kosong mencatat 0 submisi tanpa error');
+assert(exportEmptyCohort.rekapNilaiData.length === 0, 'Array rekap nilai kosong aman');
+
+// ========================================================
+// TEST GROUP 23: Server-Side Submission Validation & Anti-Cheat Hardening
+// ========================================================
+console.log('\n--- [TEST GROUP 23: Server-Side Submission Validation & Anti-Cheat Hardening] ---');
+
+// Setup test fixture for Group 23
+const studentCheatTest = {
+  nim: '2699777',
+  nama_lengkap: 'Hacker Wannabe',
+  role: 'PESERTA',
+  id_cohort: 'c_test_cheat',
+  total_xp: 300,
+  level: 2,
+  tier_badge: 'Logic Novice'
+};
+const adminCheatTest = {
+  nim: 'ADMIN_TEST',
+  nama_lengkap: 'Root Admin',
+  role: 'ADMIN',
+  id_cohort: '',
+  total_xp: 9999,
+  level: 40,
+  tier_badge: 'Grandmaster Time'
+};
+
+// Pastikan paket game memiliki soal uji
+const cheatTestGame = {
+  id_game: 'G_CHEAT_TEST',
+  judul_game: 'Uji Anti-Cheat & Validasi Server',
+  pin_sesi: 'TIME-777',
+  tipe_game: 'QUIZ',
+  mode_game: 'INDIVIDUAL',
+  durasi_total_menit: 15,
+  durasi_per_soal_detik: 60,
+  min_nilai_lulus: 70
+};
+
+const cheatTestQuestions = [
+  {
+    id_soal: 'Q_CHEAT_1',
+    id_game: 'G_CHEAT_TEST',
+    pertanyaan: 'Berapa kompleksitas waktu binary search?',
+    opsi_jawaban: 'O(N)|O(log N)|O(N^2)|O(1)',
+    kunci_jawaban: 'O(log N)',
+    poin_dasar: 50,
+    hint: 'Bagi dua ruang pencarian',
+    editorial: 'Binary search membagi ruang pencarian menjadi setengah pada setiap langkah, menghasilkan O(log N).'
+  },
+  {
+    id_soal: 'Q_CHEAT_2',
+    id_game: 'G_CHEAT_TEST',
+    pertanyaan: 'Manakah struktur data LIFO?',
+    opsi_jawaban: 'Queue|Stack|Heap|Graph',
+    kunci_jawaban: 'Stack',
+    poin_dasar: 50,
+    hint: 'Last In First Out',
+    editorial: 'Stack beroperasi dengan prinsip Last-In First-Out.'
+  }
+];
+
+ArenaStore.saveGames([...ArenaStore.getGames(), cheatTestGame]);
+ArenaStore.saveQuestions([...ArenaStore.getQuestions(), ...cheatTestQuestions]);
+
+// Mulai sesi kuis untuk mahasiswa
+const cheatSubmission = ArenaStore.startQuizSession(studentCheatTest, cheatTestGame);
+assert(cheatSubmission.status_sesi === 'ACTIVE', 'Sesi kuis mahasiswa berstatus ACTIVE');
+assert(cheatSubmission.tab_switch_count === 0, 'Tab switch count awal adalah 0');
+
+// 23.1 Zero Answer Leakage saat Sesi Aktif
+const activeQuestionsForStudent = ArenaStore.getQuestionsForUser(studentCheatTest, cheatTestGame.id_game, cheatSubmission);
+assert(activeQuestionsForStudent.length === 2, 'Mengembalikan 2 soal untuk mahasiswa');
+activeQuestionsForStudent.forEach((q, idx) => {
+  assert(q.kunci_jawaban === undefined, `Soal #${idx + 1}: Kunci jawaban terlindung (undefined) di memori client`);
+  assert(q.editorial === undefined, `Soal #${idx + 1}: Editorial solusi terlindung (undefined) di memori client`);
+  assert(q.opsi_jawaban && q.opsi_jawaban.length > 0, `Soal #${idx + 1}: Opsi jawaban tetap tersedia untuk UI`);
+});
+
+// 23.2 Admin Selalu Memiliki Akses Kunci Jawaban & Editorial (Bypass Hak Akses)
+const adminQuestions = ArenaStore.getQuestionsForUser(adminCheatTest, cheatTestGame.id_game, cheatSubmission);
+adminQuestions.forEach((q, idx) => {
+  assert(q.kunci_jawaban !== undefined, `Admin: Kunci jawaban soal #${idx + 1} tetap terbaca (${q.kunci_jawaban})`);
+  assert(q.editorial !== undefined, `Admin: Editorial soal #${idx + 1} tetap terbaca`);
+});
+
+// 23.3 Pelanggaran Pindah Tab (Tab Switch Audit Log & Clamping)
+const tabViolation1 = ArenaStore.recordTabSwitch(cheatSubmission.id_submission);
+assert(tabViolation1 !== null, 'Pencatatan pelanggaran tab pertama berhasil');
+assert(tabViolation1.tab_switch_count === 1, 'Tab switch count naik menjadi 1');
+assert(Array.isArray(tabViolation1.tab_switch_log), 'tab_switch_log tersimpan sebagai array');
+assert(tabViolation1.tab_switch_log.length === 1, 'tab_switch_log memiliki 1 entri audit');
+assert(tabViolation1.tab_switch_log[0].penalty_deducted === 5, 'Entri log audit mencatat penalti -5 poin');
+assert(typeof tabViolation1.tab_switch_log[0].timestamp === 'string', 'Entri log audit mencatat timestamp ISO valid');
+
+// 23.4 Single-Shot Answer Lock & Replay Prevention
+const firstQId = activeQuestionsForStudent[0].id_soal;
+const answer1 = ArenaStore.answerQuestion({
+  submissionId: cheatSubmission.id_submission,
+  idSoal: firstQId,
+  jawaban: 'O(log N)',
+  isTimeout: false,
+  openedHint: false,
+  sisaDetik: 45
+});
+
+assert(answer1.isCorrect === true, 'Jawaban pertama dinilai benar oleh server store');
+assert(answer1.xpEarned > 0, 'Mahasiswa mendapatkan XP');
+assert(answer1.submission.detail_jawaban_json.length === 1, 'Detail jawaban mencatat 1 soal terjawab');
+
+// Upaya Replay Jawaban untuk soal yang sama
+const duplicateAnswer = ArenaStore.answerQuestion({
+  submissionId: cheatSubmission.id_submission,
+  idSoal: firstQId,
+  jawaban: 'O(N)',
+  isTimeout: false,
+  openedHint: false,
+  sisaDetik: 30
+});
+assert(duplicateAnswer.submission.detail_jawaban_json.length === 1, 'Replay Prevention: Detail jawaban tidak bertambah untuk soal yang sudah dikunci');
+assert(duplicateAnswer.submission.detail_jawaban_json[0].jawaban_mahasiswa === 'O(log N)', 'Replay Prevention: Jawaban pertama tidak dapat ditimpa (Immutable Answer Lock)');
+
+// Jawab soal kedua
+const secondQId = activeQuestionsForStudent[1].id_soal;
+ArenaStore.answerQuestion({
+  submissionId: cheatSubmission.id_submission,
+  idSoal: secondQId,
+  jawaban: 'Stack',
+  isTimeout: false,
+  openedHint: false,
+  sisaDetik: 40
+});
+
+// 23.5 Selesaikan Kuis & Restorasi Kunci Jawaban / Editorial
+const finalizedSub = ArenaStore.finishQuizSession(cheatSubmission.id_submission);
+assert(finalizedSub.status_sesi === 'DONE', 'Status sesi submisi terkunci DONE');
+assert(finalizedSub.nilai_akademik === 95, `Nilai akademik terhitung akurat: 100 - 5 = 95 (Aktual: ${finalizedSub.nilai_akademik})`);
+assert(finalizedSub.status_lulus === 'LULUS', 'Status kelulusan tercapai (Nilai 95 >= 70)');
+
+// Saat status sudah DONE, getQuestionsForUser merestorasi kunci jawaban & editorial
+const completedQuestionsForStudent = ArenaStore.getQuestionsForUser(studentCheatTest, cheatTestGame.id_game, finalizedSub);
+completedQuestionsForStudent.forEach((q, idx) => {
+  assert(q.kunci_jawaban !== undefined, `Sesi Selesai #${idx + 1}: Kunci jawaban terestorasi untuk telaah (${q.kunci_jawaban})`);
+  assert(q.editorial !== undefined, `Sesi Selesai #${idx + 1}: Editorial terestorasi untuk evaluasi akademik`);
+});
+
+// ========================================================
+// TEST GROUP 24: Supabase PostgreSQL Schema & Relational Model Integrity
+// ========================================================
+console.log('\n--- [TEST GROUP 24: Supabase PostgreSQL Schema & Relational Model Integrity] ---');
+
+const schemaPath = path.resolve('supabase/schema.sql');
+assert(fs.existsSync(schemaPath), 'File supabase/schema.sql terdeteksi di repositori');
+
+const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+
+// 24.1 Validasi Keberadaan Tabel Utama & View
+assert(schemaSql.includes('CREATE TABLE public.cohorts'), 'Tabel public.cohorts terdefinisi');
+assert(schemaSql.includes('CREATE TABLE public.teams'), 'Tabel public.teams terdefinisi');
+assert(schemaSql.includes('CREATE TABLE public.users'), 'Tabel public.users terdefinisi');
+assert(schemaSql.includes('CREATE TABLE public.games'), 'Tabel public.games terdefinisi');
+assert(schemaSql.includes('CREATE TABLE public.cohort_game_access'), 'Tabel public.cohort_game_access terdefinisi');
+assert(schemaSql.includes('CREATE TABLE public.questions'), 'Tabel public.questions terdefinisi');
+assert(schemaSql.includes('CREATE TABLE public.submissions'), 'Tabel public.submissions terdefinisi');
+assert(schemaSql.includes('CREATE OR REPLACE VIEW public.student_questions_view'), 'View public.student_questions_view terdefinisi');
+
+// 24.2 Validasi Sinkronisasi Kolom & Relasi Dinamis
+assert(schemaSql.includes('id_cohort VARCHAR(50) REFERENCES public.cohorts(id_cohort)'), 'Tabel teams memuat foreign key id_cohort ke cohorts');
+assert(schemaSql.includes('tab_switch_log JSONB'), 'Tabel submissions memuat kolom audit tab_switch_log');
+assert(schemaSql.includes('shuffled_question_ids JSONB'), 'Tabel submissions memuat kolom anti-cheat shuffled_question_ids');
+assert(schemaSql.includes('cohort_statuses JSONB'), 'Tabel games memuat kolom pemetaan status dinamis cohort_statuses');
+
+// 24.3 Zero Answer Leakage pada View Mahasiswa
+const viewDefinition = schemaSql.split('CREATE OR REPLACE VIEW public.student_questions_view')[1]?.split(';')[0] || '';
+assert(!viewDefinition.includes('kunci_jawaban'), 'student_questions_view mengecualikan kunci_jawaban (Zero Leakage)');
+assert(!viewDefinition.includes('editorial'), 'student_questions_view mengecualikan editorial (Zero Leakage)');
+assert(viewDefinition.includes('opsi_jawaban'), 'student_questions_view tetap menyediakan opsi_jawaban untuk antarmuka kuis');
+
+// 24.4 Kepatuhan Produksi Bersih (0 Mahasiswa Mock pada Seed Eksekutif)
+const uncommentedSql = schemaSql.replace(/\/\*[\s\S]*?\*\//g, '');
+const usersInsertMatch = uncommentedSql.match(/INSERT INTO public\.users[\s\S]*?;/g);
+const activeUserInsertSql = usersInsertMatch ? usersInsertMatch.join('\n') : '';
+
+assert(activeUserInsertSql.includes("'ADMIN'"), 'Seed produksi mendaftarkan kredensial ADMIN');
+assert(activeUserInsertSql.includes("'DOSEN001'"), 'Seed produksi mendaftarkan kredensial DOSEN001');
+assert(activeUserInsertSql.includes("'TH'"), 'Avatar root menggunakan inisial monogram TH (Zero AI Slop)');
+assert(!activeUserInsertSql.includes('2545001'), 'Seed produksi bersih tidak memuat mahasiswa mock 2545001');
+assert(!activeUserInsertSql.includes('240101001'), 'Seed produksi bersih tidak memuat mahasiswa mock 240101001');
+assert(!activeUserInsertSql.includes('Cecilia Anggraini'), 'Seed produksi bersih 0 mahasiswa dummy (Aktual: 0)');
+
+// 24.5 Perlindungan RLS (Row Level Security)
+assert(schemaSql.includes('ALTER TABLE public.cohorts ENABLE ROW LEVEL SECURITY'), 'RLS diaktifkan untuk cohorts');
+assert(schemaSql.includes('ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY'), 'RLS diaktifkan untuk teams');
+assert(schemaSql.includes('ALTER TABLE public.users ENABLE ROW LEVEL SECURITY'), 'RLS diaktifkan untuk users');
+assert(schemaSql.includes('ALTER TABLE public.submissions ENABLE ROW LEVEL SECURITY'), 'RLS diaktifkan untuk submissions');
+
+// ========================================================
+// TEST GROUP 25: Student Onboarding, First-Login Guard & Password Change Security
+// ========================================================
+console.log('\n--- [TEST GROUP 25: Student Onboarding, First-Login Guard & Password Change Security] ---');
+
+// 25.1 Pendaftaran Mahasiswa Baru & Status First-Login
+const newStudentNim = '26019999';
+const createdStudentRes = ArenaStore.createUser({
+  nim: newStudentNim,
+  nama_lengkap: 'Surya Pratama',
+  role: 'PESERTA',
+  klub_hari: 'KAMIS',
+  id_cohort: 'c_test_onboard',
+  periode: 'Ganjil 2025',
+  prodi: 'Sistem Informasi',
+  angkatan: 2025,
+  kelas_reguler: 'SI C 25'
+});
+
+assert(createdStudentRes.success === true, 'Pendaftaran akun mahasiswa baru berhasil');
+assert(createdStudentRes.user?.is_first_login === true, 'Akun mahasiswa baru memiliki status is_first_login === true');
+assert(createdStudentRes.user?.password === newStudentNim, 'Default password mahasiswa baru identik dengan NIM');
+
+// 25.2 Login Perdana & Deteksi Kebutuhan Onboarding
+const loginFirstRes = ArenaStore.login(newStudentNim, newStudentNim);
+assert(loginFirstRes.success === true, 'Login dengan default password (NIM) berhasil');
+assert(loginFirstRes.requiresOnboarding === true, 'Sistem mendeteksi wajib onboarding pada mahasiswa baru');
+
+// 25.3 Validasi Penolakan Password Lemah & Trivial
+const rejectShortPass = ArenaStore.changePassword(newStudentNim, newStudentNim, '12345');
+assert(rejectShortPass.success === false, 'Menolak kata sandi baru < 6 karakter');
+assert(rejectShortPass.message.includes('minimal'), 'Pesan error mengindikasikan syarat minimal 6 karakter');
+
+const rejectSameNimPass = ArenaStore.changePassword(newStudentNim, newStudentNim, newStudentNim);
+assert(rejectSameNimPass.success === false, 'Menolak kata sandi baru yang sama dengan NIM');
+assert(rejectSameNimPass.message.includes('NIM'), 'Pesan error mengindikasikan larangan penggunaan NIM');
+
+const rejectWrongOldPass = ArenaStore.changePassword(newStudentNim, 'WRONG_OLD_PASS', 'RahasiaBaru#2025');
+assert(rejectWrongOldPass.success === false, 'Menolak pembaruan jika kata sandi lama salah');
+
+// 25.4 Sukses Ganti Password Mandiri
+const successChangePass = ArenaStore.changePassword(newStudentNim, newStudentNim, 'AlgoMaster#2025');
+assert(successChangePass.success === true, 'Pembaruan kata sandi valid berhasil');
+assert(successChangePass.user?.password === 'AlgoMaster#2025', 'Kata sandi tersimpan sesuai input baru');
+assert(successChangePass.user?.is_first_login === false, 'Status is_first_login berganti menjadi false');
+assert(typeof successChangePass.user?.password_changed_at === 'string', 'Timestamp password_changed_at tercatat');
+
+// 25.5 Login Pasca-Ganti Password
+const loginOldPassFail = ArenaStore.login(newStudentNim, newStudentNim);
+assert(loginOldPassFail.success === false, 'Login dengan kata sandi lama (NIM) otomatis ditolak');
+
+const loginNewPassSuccess = ArenaStore.login(newStudentNim, 'AlgoMaster#2025');
+assert(loginNewPassSuccess.success === true, 'Login dengan kata sandi baru berhasil');
+assert(loginNewPassSuccess.requiresOnboarding === false, 'Sesi tidak lagi meminta onboarding (requiresOnboarding === false)');
+
+// 25.6 Alur Complete Onboarding (Password + Custom Codename)
+const anotherStudentNim = '26018888';
+ArenaStore.createUser({
+  nim: anotherStudentNim,
+  nama_lengkap: 'Bunga Citra',
+  role: 'PESERTA',
+  klub_hari: 'JUMAT',
+  prodi: 'Teknik Informatika',
+  angkatan: 2025,
+  kelas_reguler: 'TI A 25'
+});
+
+const onboardRes = ArenaStore.completeOnboarding({
+  nim: anotherStudentNim,
+  newPassword: 'SecureMatrix2025',
+  codename: 'CyberFlora',
+  avatar: 'BC'
+});
+
+assert(onboardRes.success === true, 'Eksekusi completeOnboarding berhasil');
+assert(onboardRes.user?.password === 'SecureMatrix2025', 'Kata sandi baru tersimpan via completeOnboarding');
+assert(onboardRes.user?.codename === 'CyberFlora', 'Codename kustom tersimpan via completeOnboarding');
+assert(onboardRes.user?.avatar === 'BC', 'Avatar monogram tersimpan via completeOnboarding');
+assert(onboardRes.user?.is_first_login === false, 'is_first_login berganti false pasca-completeOnboarding');
+
+// 25.7 Akun Admin Kebal dari Onboarding Mahasiswa
+const adminLoginRes = ArenaStore.login('ADMIN', 'ADMIN');
+assert(adminLoginRes.success === true, 'Login root ADMIN berhasil');
+assert(adminLoginRes.requiresOnboarding === false, 'Root ADMIN tidak diarahkan ke onboarding mahasiswa');
 
 console.log('\n========================================================');
 console.log(`📊 Hasil Verifikasi: ${passedTests}/${totalTests} Uji Lulus (${Math.round((passedTests/totalTests)*100)}%)`);

@@ -71,8 +71,9 @@ export default function QuizArenaModal({
   useEffect(() => {
     if (!isOpen || !submission || submission.status_sesi !== 'ACTIVE') return;
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.hidden) {
+        // Optimistic local update
         const updated = ArenaStore.recordTabSwitch(submission.id_submission);
         if (updated) {
           setSubmission(updated);
@@ -80,6 +81,20 @@ export default function QuizArenaModal({
             `⚠️ PERINGATAN CURANG: Terdeteksi pindah tab! Nilai Akhir & Skor XP dipotong -5.`
           );
           setTimeout(() => setAntiCheatWarning(null), 6000);
+        }
+
+        // Server-side audit sync
+        try {
+          await fetch('/api/submissions/quiz', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'tab-switch',
+              submissionId: submission.id_submission,
+            }),
+          });
+        } catch {
+          // Graceful offline fallback
         }
       }
     };
@@ -91,14 +106,35 @@ export default function QuizArenaModal({
   }, [isOpen, submission]);
 
   // 3. Selesaikan Game Otomatis (Auto-Finish)
-  const completeGame = useCallback(() => {
+  const completeGame = useCallback(async () => {
     if (!submission) return;
 
     // Bersihkan timers
     if (totalTimerRef.current) clearInterval(totalTimerRef.current);
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
 
-    const finalSub = ArenaStore.finishQuizSession(submission.id_submission);
+    let finalSub = ArenaStore.finishQuizSession(submission.id_submission);
+
+    // Call server finish validation
+    try {
+      const res = await fetch('/api/submissions/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'finish',
+          submissionId: submission.id_submission,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.submission) {
+          finalSub = { ...finalSub, ...data.submission };
+        }
+      }
+    } catch {
+      // Graceful offline fallback
+    }
+
     setSubmission(finalSub);
 
     // Confetti effect jika nilai >= batas kelulusan
@@ -160,7 +196,7 @@ export default function QuizArenaModal({
   }, [currentQIndex, game.durasi_per_soal_detik]);
 
   // 6. Handle Kirim Jawaban Soal (One-Shot Lock & Auto-Jump)
-  const handleAnswer = (isTimeout: boolean = false) => {
+  const handleAnswer = async (isTimeout: boolean = false) => {
     if (!submission || questions.length === 0 || isSubmitting) return;
 
     const currentQ = questions[currentQIndex];
@@ -172,21 +208,67 @@ export default function QuizArenaModal({
 
     setIsSubmitting(true);
     const hasOpenedHint = !!openedHints[currentQ.id_soal];
+    const jawabanValue = isTimeout ? '(TIMEOUT)' : selectedOption;
 
-    const res = ArenaStore.answerQuestion({
-      submissionId: submission.id_submission,
-      idSoal: currentQ.id_soal,
-      jawaban: isTimeout ? '(TIMEOUT)' : selectedOption,
-      isTimeout,
-      openedHint: hasOpenedHint,
-      sisaDetik: questionSecondsLeft
-    });
+    let updatedSub = submission;
+    try {
+      const res = await fetch('/api/submissions/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'answer',
+          submissionId: submission.id_submission,
+          idSoal: currentQ.id_soal,
+          jawaban: jawabanValue,
+          isTimeout,
+          openedHint: hasOpenedHint,
+          sisaDetik: questionSecondsLeft,
+        }),
+      });
 
-    setSubmission(res.submission);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.submission) {
+          updatedSub = data.submission;
+        } else {
+          const localRes = ArenaStore.answerQuestion({
+            submissionId: submission.id_submission,
+            idSoal: currentQ.id_soal,
+            jawaban: jawabanValue,
+            isTimeout,
+            openedHint: hasOpenedHint,
+            sisaDetik: questionSecondsLeft,
+          });
+          updatedSub = localRes.submission;
+        }
+      } else {
+        const localRes = ArenaStore.answerQuestion({
+          submissionId: submission.id_submission,
+          idSoal: currentQ.id_soal,
+          jawaban: jawabanValue,
+          isTimeout,
+          openedHint: hasOpenedHint,
+          sisaDetik: questionSecondsLeft,
+        });
+        updatedSub = localRes.submission;
+      }
+    } catch {
+      const localRes = ArenaStore.answerQuestion({
+        submissionId: submission.id_submission,
+        idSoal: currentQ.id_soal,
+        jawaban: jawabanValue,
+        isTimeout,
+        openedHint: hasOpenedHint,
+        sisaDetik: questionSecondsLeft,
+      });
+      updatedSub = localRes.submission;
+    }
+
+    setSubmission(updatedSub);
     setIsSubmitting(false);
 
     // Cari soal berikutnya yang belum dijawab
-    const answeredIds = new Set(res.submission.detail_jawaban_json.map(d => d.id_soal));
+    const answeredIds = new Set(updatedSub.detail_jawaban_json.map(d => d.id_soal));
     const nextUnanswered = questions.findIndex(q => !answeredIds.has(q.id_soal));
 
     if (nextUnanswered !== -1) {

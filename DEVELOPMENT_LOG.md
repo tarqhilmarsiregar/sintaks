@@ -793,3 +793,237 @@ File antarmuka: `gas/Index.html` & `public/arena.html`.
 - **Hasil Verifikasi Mutu (QA):**
   - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
   - Automated Verification Suite: **277/277 Tests PASS (100%)** via `npm test`.
+
+---
+
+### Bagian 37: Sprint 16 — Advanced Snake-Draft Team Engine, Fairness Analytics & Dynamic Squad Management
+- **Konteks & Kebutuhan Rekayasa:**
+  - Melanjutkan pengembangan menu **Manajemen Tim** ([/admin/teams](http://localhost:3001/admin/teams)) dari prototipe statis (`KAMIS`, `JUMAT`, `LOMBA`) menjadi sistem manajemen skuad kompetitif 100% dinamis terintegrasi penuh dengan kohort kelas buatan Admin.
+  - Memperluas algoritma Snake-Draft zig-zag ($1 \to 2 \to 3 \to 3 \to 2 \to 1$) untuk mendukung konfigurasi ukuran tim kustom (2, 3, 4, atau 5 mahasiswa per skuad).
+  - Menyediakan **Fairness & Balance Analytics Dashboard** yang memonitor rata-rata XP skuad, disparitas (Delta Max-Min), standar deviasi, dan rating keseimbangan matematis secara *real-time*.
+  - Menyediakan kendali manajemen granular: pembubaran per-tim vs per-kelas, pengubahan nama tim, penunjukan ketua tim (*leader*), serta pemindahan anggota antar-skuad dengan rekalkulasi skor otomatis.
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & Data Store Architecture:**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts):
+      - Memperluas interface `Team` dengan atribut `id_cohort?: string`.
+      - Menambahkan interface `TeamFairnessMetrics` untuk kalkulasi analitik keseimbangan.
+    - [src/lib/gamification.ts](file:///d:/CP-Arena/src/lib/gamification.ts):
+      - Memperbarui `generateSnakeDraftTeams` untuk menerima kohort dinamis (`cohortIdOrKlub`), ukuran tim variabel (`targetTeamSize`), serta penamaan dan kode gabung otomatis.
+      - Menambahkan fungsi `calculateTeamFairnessMetrics(teams: Team[])` yang menghitung mean, min/max, delta, standar deviasi ($\sigma = \sqrt{\frac{\sum(XP_i - \bar{XP})^2}{N}}$), persentase deviasi, dan rating keseimbangan (`OPTIMAL`, `GOOD`, `MODERATE`, `IMBALANCED`).
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - Menambahkan `generateTeamsForCohort(cohortIdOrKlub, targetTeamSize)` yang otomatis menyinkronkan referensi `user.id_tim` secara bi-direksional.
+      - Menambahkan `disbandTeamsForCohort(cohortIdOrKlub)` untuk pembubaran massal tim per-kohort.
+      - Menambahkan `updateTeamDetails(idTim, { nama_tim, leader_nim })` untuk pengeditan metadata tim dan perpindahan kepemimpinan.
+      - Menambahkan `moveTeamMember(nim, targetTeamId)` untuk perpindahan mahasiswa antar-skuad dengan rekalkulasi skor tim otomatis.
+  - **UI/UX Designer & Industrial Dark Mode Interface:**
+    - [src/components/admin/tabs/AdminTeamDraftTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminTeamDraftTab.tsx):
+      - Desain ulang menyeluruh (*Zero AI Slop*) menggunakan palet industri utilitarian (`#070b14`, `#0b1120`, border `#1e293b`).
+      - Menghilangkan total seluruh ikon dan ornamen klise AI Slop (ikon `Sparkles`, animasi `animate-pulse`, dan emoji warna-warni). Menggantikannya dengan ikon fungsional standar industri (`Shuffle`, `Users`, `BarChart3`, `ArrowUpDown`, `ShieldCheck`, `Shield`).
+      - Normalisasi tipografi: font monospace (`font-mono`) dikhususkan secara presisi hanya untuk data teknis (NIM, Kode Gabung, Skor XP, ID Tim), sementara narasi, judul, label tombol, dan modal menggunakan font sans-serif yang bersih dan mudah dibaca.
+      - Menghadirkan **Fairness Analytics KPI Card** (Total Skuad, Rata-rata Skor Skuad, Disparitas Max-Min, dan Status Keseimbangan Algoritma dengan indikator deviasi persentase).
+      - Menghadirkan filter pill kohort dinamis yang sinkron dengan kohort kelas aktif, serta bar pencarian instan tim/mahasiswa.
+      - Kartu tim interaktif dengan rank badge, kode gabung 1-klik salin (*copy-to-clipboard*), total XP beserta deviasi vs rata-rata kelas, badge Ketua Tim yang elegan, tombol pindah anggota, dan tombol aksi per-tim.
+      - Menghadirkan 5 modal portal kustom via [src/components/common/ModalPortal.tsx](file:///d:/CP-Arena/src/components/common/ModalPortal.tsx): Modal Generate Draft (dengan selector ukuran tim 2-5 orang), Modal Bubarkan Kelas, Modal Bubarkan Tim Spesifik, Modal Ubah Skuad, dan Modal Pindah Anggota.
+    - [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx):
+      - Menghubungkan handler `handleGenerateCohortTeams`, `handleDisbandCohortTeams`, `handleDisbandSingleTeam`, `handleUpdateTeam`, dan `handleMoveMember`.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 21 (Dynamic Cohort Snake-Draft, Fairness Analytics & Squad Management)** dengan 26 assertions baru yang memvalidasi pembagian snake-draft kohort dinamis, akurasi akumulasi XP tim, kode gabung, penunjukan leader otomatis, metrik fairness deviasi XP, update nama/leader tim, perpindahan anggota antar-tim, serta pembubaran tim per-unit maupun per-kelas.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **303/303 Tests PASS (100%)** via `npm test`.
+
+---
+
+### Bagian 38: Eliminasi Data Dummy Mahasiswa, Zero-State Industrial UI, dan Transisi 100% Direktori Mahasiswa Dinamis (/admin/students)
+- **Konteks & Kebutuhan Rekayasa:**
+  - Evaluasi halaman Manajemen Mahasiswa ([/admin/students](http://localhost:3000/admin/students)) yang sebelumnya masih menampilkan 28 akun mahasiswa dummy warisan masa *prototyping* (`2545001 Cecilia`, 14 mahasiswa Kamis, 13 mahasiswa Jumat).
+  - Sesuai prinsip *Single Source of Truth* (SSOT), *Clean Slate Architecture*, dan integrasi kohort murni dinamis, data seed aplikasi di lingkungan produksi harus 0 mahasiswa (hanya memuat akun resmi sistem `ADMIN` dan `DOSEN001`).
+  - Mengimplementasikan pembersihan otomatis (*auto-purge*) pada `localStorage` browser klien untuk menghapus 28 NIM mahasiswa mock lama tanpa merusak akun admin resmi atau data mahasiswa riil yang didaftarkan manual oleh Admin.
+  - Merancang **Industrial Dark Empty State Card** saat direktori mahasiswa masih kosong (`0 Mahasiswa`), lengkap dengan panduan kontekstual dan tombol CTA langsung (`+ Buat Kelas / Kohort` & `+ Tambah Akun Baru`).
+  - Pembersihan copywriting dan fallback statis peninggalan legacy enum (`KAMIS`, `JUMAT`, `LOMBA`), beralih ke relasi kohort pembelajaran murni dinamis.
+  - Memisahkan test fixture pengujian algoritma (`TEST_MOCK_STUDENTS`) dari runtime produksi, sehingga automated verification suite tetap lulus 100% (304/304 test assertions).
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & Data Store Architecture:**
+    - [src/lib/seed-data.ts](file:///d:/CP-Arena/src/lib/seed-data.ts):
+      - `INITIAL_USERS` dipangkas hanya memuat akun sistem root: `ADMIN` dan `DOSEN001` (0 akun mahasiswa dummy pada runtime produksi).
+      - Avatar akun admin dinormalisasi ke monogram inisial profesional `TH` (*anti-AI slop*, menggantikan emoji mahkota).
+      - Data 28 mahasiswa dipisahkan dan diekspor sebagai fixture khusus pengujian: `TEST_MOCK_STUDENTS`.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - `getUsers()`: Menambahkan auto-purge satu kali (`cparena_mock_students_purged_v2`) untuk membersihkan 28 NIM mock lama dari `localStorage` browser klien, sekaligus memastikan akun `ADMIN` & `DOSEN001` tetap tersedia.
+      - `getCurrentUser()`: Mengamankan pemulihan sesi, otomatis menginvaliasi sesi jika token sesi merujuk pada akun mahasiswa dummy yang telah dibersihkan.
+      - `createUser()`: Menghapus fallback statis ke `c-kamis`/`c-jumat`, dan menautkan mahasiswa secara dinamis ke kohort kelas yang dipilih.
+      - `resetGlobal()`: Menjamin state pasca-reset mempertahankan status bersih produksi.
+  - **UI/UX Designer & Zero-State Industrial UI:**
+    - [src/components/admin/tabs/AdminStudentMonitorTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminStudentMonitorTab.tsx):
+      - Menghadirkan **Industrial Dark Empty State Card** saat `totalStudentsCount === 0` dengan ikon `GraduationCap`, panduan alur registrasi, serta tombol CTA kontekstual (`+ Buat Kelas / Kohort` dan `+ Tambah Akun Baru`).
+      - Menambahkan prompt pencarian/filter reset interaktif saat filter aktif tidak menghasilkan kecocokan.
+      - Subheader diperbarui menjadi netral berbasis kelas/kohort dinamis tanpa hardcoded hari Kamis/Jumat.
+      - Badge kelas pada tabel mahasiswa kini dinamis mengambil `nama_kelas` dari kohort terdaftar.
+      - Dropdown assign kohort pada modal tambah akun kini dinamis mengikuti kode kelas kohort.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Memperbarui Test Group 1 untuk memverifikasi kondisi produksi bersih (`INITIAL_USERS.filter(u => u.role === 'PESERTA').length === 0`) dan memvalidasi integritas test fixture `TEST_MOCK_STUDENTS`.
+      - Memperbarui Test Group 5, 11, dan 19 agar menggunakan fixture data untuk pengujian engine tim, scoreboard ICPC, dan peracakan soal anti-cheat.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **304/304 Tests PASS (100%)** via `npx tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 39: Sistem Ekspor Multi-Sheet Dinamis, Eliminasi Kartu Statis, dan Engine Laporan Akademik (/admin/export)
+- **Konteks & Kebutuhan Rekayasa:**
+  - Evaluasi halaman Rekapitulasi Nilai & Ekspor Laporan Resmi ([/admin/export](http://localhost:3000/admin/export)) yang sebelumnya masih menggunakan 4 kartu statis peninggalan *prototyping* (`Kelas KAMIS 15 SI`, `Kelas JUMAT 13 TI/SI`, `Kelas LOMBA`, dan `ALL`).
+  - Memutakhirkan sistem ekspor agar 100% dinamis terintegrasi dengan kohort buatan Admin (`cohorts.map(...)`) serta menyediakan **Master Summary Report Card** gabungan seluruh kelas.
+  - Memisahkan logika transformasi dataset laporan akademik ke dalam service terisolasi ([src/lib/export-service.ts](file:///d:/CP-Arena/src/lib/export-service.ts)) untuk mendukung ekspor multi-sheet `.xlsx` (SheetJS) dan fallback RFC 4180 CSV ber-BOM UTF-8 (`\uFEFF`).
+  - Merancang **Zero-State Card** saat belum ada kelas terdaftar dengan panduan kontekstual dan tombol CTA ke pembuatan kohort.
+  - Menjaga integritas Zona Bahaya (*Danger Zone*) dengan dialog konfirmasi custom modal portal (`RESET-TIME`).
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering & Data Transformation Service:**
+    - [src/lib/export-service.ts](file:///d:/CP-Arena/src/lib/export-service.ts):
+      - Mendefinisikan interface: `RekapNilaiRow`, `DiagnostikMateriRow`, `LogDetailSubmisiRow`, `AcademicExportPayload`, dan `AcademicExportResult`.
+      - Mengimplementasikan `generateAcademicExportData()`: fungsi murni (*pure transformer*) yang memetakan dataset mahasiswa, riwayat submisi, dan game menjadi struktur data 3-Sheet:
+        1. **Sheet 1 (`Rekap_Nilai`):** NIM, Nama, Codename, Kelas Kohort, Periode, Prodi, Rata-rata Nilai (0-100), Nilai Terbaik, Total Pindah Tab, Akumulasi Penalti (-5 per switch), Total XP, Level, Tier, dan Status Ketuntasan ($\ge 70 \to \text{TUNTAS}$).
+        2. **Sheet 2 (`Diagnostik_Materi`):** Pemetaan serapan kompetensi teknis, level, XP, indikasi akademik (*Sangat Menguasai* / *Cukup* / *Butuh Pengayaan*), dan rekomendasi modul.
+        3. **Sheet 3 (`Log_Detail`):** Log presisi detik submisi, jumlah benar/total soal, nilai, penalti tab, dan status kelulusan.
+      - Mengimplementasikan `downloadAcademicExport()`: *browser dispatcher* yang menginjeksi SheetJS workbook multi-sheet jika tersedia, atau men-download CSV UTF-8 ber-delimiter titik koma dengan *quote escaping*.
+    - [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx):
+      - Menghubungkan service ekspor dinamis `handleExportExcel(cohortIdOrCode, cohortName)`.
+      - Memasukkan properti `cohorts` dan `onCreateCohortClick` ke `AdminExportTab`.
+  - **UI/UX Designer & Anti-AI Slop Interface:**
+    - [src/components/admin/tabs/AdminExportTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminExportTab.tsx):
+      - Menghilangkan kartu statis Kamis/Jumat dan menggantikannya dengan **Master Report Card** (ALL) lengkap dengan metrik cepat (Total Mahasiswa, Submisi Selesai, Paket Kontes, dan Total Kelas).
+      - Menghadirkan **Dynamic Cohort Cards Grid** yang merender kartu ekspor per-kohort dengan counter mahasiswa aktual, log submisi, dan tombol unduh spesifik kelas.
+      - Menampilkan **Industrial Zero-State Card** saat belum ada kelas terdaftar dengan panduan dan tombol CTA `+ Buat Kelas / Kohort Baru`.
+      - Menata kartu informasi struktur laporan 3-Sheet dengan palet gelap utilitarian (`#070b14`, `#0b1120`, border `#1e293b`).
+      - Mempertahankan Zona Bahaya yang aman dengan verifikasi ketik `RESET-TIME` via [src/components/common/ModalPortal.tsx](file:///d:/CP-Arena/src/components/common/ModalPortal.tsx).
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 22 (Multi-Sheet Academic Report & Dynamic Export Engine)** dengan 21 assertions baru:
+        - Memverifikasi output ekspor rekap total `ALL` (prefix nama file, keberadaan 3 array sheet, akurasi baris data).
+        - Memverifikasi isolasi ekspor per-kohort spesifik (kode file, judul kelas, filter mahasiswa).
+        - Memverifikasi kalkulasi nilai akademik, akumulasi penalti tab switch (-5 poin), penetapan status ketuntasan, dan indikasi diagnostik XP.
+        - Memverifikasi *cold start resilience* pada kohort kosong (0 mahasiswa, 0 submisi) tetap menghasilkan array valid tanpa *error*.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx tsc --noEmit`.
+  - Automated Verification Suite: **325/325 Tests PASS (100%)** via `npx tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 40: Validasi Submisi Server-Side & Pengerasan Anti-Cheat Integritas Kuis (/api/submissions/quiz)
+- **Konteks & Kebutuhan Rekayasa (Opsi C):**
+  - Mencegah kebocoran data (*data leakage*) kunci jawaban dan editorial soal pada inspeksi memori client/browser selama sesi kuis berlangsung (`status_sesi === 'ACTIVE'`).
+  - Membangun rute server-side dedicated [src/app/api/submissions/quiz/route.ts](file:///d:/CP-Arena/src/app/api/submissions/quiz/route.ts) untuk memproses penilaian per-butir soal secara objektif di server, pencatatan pelanggaran tab switch, dan finalisasi penilaian akhir.
+  - Menerapkan penguncian satu kali (*Single-Shot Answer Lock & Replay Prevention*) agar jawaban yang sudah dikirim tidak dapat dimanipulasi atau diulang.
+  - Memasang *Anti-Cheat Access Guard* pada modal editorial ([src/components/arena/EditorialModal.tsx](file:///d:/CP-Arena/src/components/arena/EditorialModal.tsx)) untuk mengunci pembahasan hingga sesi kuis benar-benar selesai.
+  - Menghilangkan elemen AI Slop yang tersisa: membersihkan ikon `Sparkles` tak terpakai pada [src/components/arena/CodingArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/CodingArenaModal.tsx) dan mengganti native `window.confirm()` pada [src/components/CodeEditor.tsx](file:///d:/CP-Arena/src/components/CodeEditor.tsx) dengan custom `ModalPortal` bergaya Industrial Dark.
+- **Implementasi Multi-Perspektif:**
+  - **Backend & Security Engineering:**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts):
+      - Menambahkan field audit `tab_switch_log?: { timestamp: string; penalty_deducted: number }[]` ke dalam interface `Submission`.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - Memperbarui `getQuestionsForUser(user, gameId, submission)`: Mengamankan array soal dengan menghapus (`undefined`) field `kunci_jawaban` dan `editorial` jika user adalah `PESERTA` dan status sesi belum `DONE`. Kunci jawaban dan editorial secara otomatis dipulihkan setelah sesi selesai (`status_sesi === 'DONE'`) untuk keperluan telaah pasca-ujian. Akun `ADMIN` tetap memiliki akses penuh tanpa restriksi.
+      - Memperbarui `recordTabSwitch(submissionId)`: Mencatat log audit forensik dengan timestamp ISO presisi detik dan deduksi penalti 5 poin per pelanggaran, dengan penjagaan nilai minimum ($\ge 0$).
+    - [src/app/api/submissions/quiz/route.ts](file:///d:/CP-Arena/src/app/api/submissions/quiz/route.ts):
+      - Merancang rute API Next.js App Router `POST /api/submissions/quiz` yang menangani 3 aksi utama:
+        1. `action: 'answer'`: Memvalidasi sesi aktif, menerapkan *Single-Shot Lock* (menolak duplikasi/replay dengan HTTP 409 Conflict), mengevaluasi kebenaran jawaban di server, menghitung bonus XP (speed bonus, streak, first blood), dan memperbarui rekaman submisi.
+        2. `action: 'tab-switch'`: Mencatat pelanggaran pindah tab di server dan mengurangkan penalti.
+        3. `action: 'finish'`: Mengunci sesi menjadi `DONE`, memotong penalti akhir secara deterministik, dan menentukan status kelulusan akademik.
+  - **Frontend & UI/UX Engineering:**
+    - [src/components/arena/QuizArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/QuizArenaModal.tsx):
+      - Mengintegrasikan fungsi pengiriman jawaban (`handleAnswer`), pendeteksian pindah tab (`handleVisibilityChange`), dan penyelesaian ujian (`completeGame`) ke endpoint API server `/api/submissions/quiz` dengan mekanisme *resilient offline fallback* ke `ArenaStore`.
+    - [src/components/arena/EditorialModal.tsx](file:///d:/CP-Arena/src/components/arena/EditorialModal.tsx):
+      - Menambahkan pengaman anti-curang (*Anti-Cheat Guard*): Jika sesi belum selesai (`status_sesi !== 'DONE'`), dialog langsung menampilkan peringatan bahwa editorial terkunci hingga kuis selesai, mencegah inspeksi kode sumber editorial.
+    - [src/components/arena/CodingArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/CodingArenaModal.tsx):
+      - Menghapus import ikon `Sparkles` yang tidak digunakan (Zero AI Slop).
+    - [src/components/CodeEditor.tsx](file:///d:/CP-Arena/src/components/CodeEditor.tsx):
+      - Mengganti pemanggilan `confirm(...)` browser bawaan dengan modal konfirmasi interaktif berbasis `ModalPortal` dengan tema Industrial Dark, typography monospace terarah, dan tombol konfirmasi yang jelas.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 23 (Server-Side Submission Validation & Anti-Cheat Hardening)** dengan 33 assertions:
+        - Memverifikasi *zero answer & editorial leakage* pada sesi aktif mahasiswa (`kunci_jawaban: undefined`, `editorial: undefined`).
+        - Memverifikasi ketersediaan kunci jawaban dan editorial bagi peran `ADMIN`.
+        - Memverifikasi audit log perpindahan tab (`tab_switch_log`) beserta pemotongan penalti.
+        - Memverifikasi ketahanan *Single-Shot Answer Lock* terhadap upaya modifikasi jawaban berulang (*replay prevention*).
+        - Memverifikasi pemulihan otomatis (*restoration*) kunci jawaban dan editorial saat sesi bertransformasi menjadi `DONE`.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **358/358 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 41: Sinkronisasi Skema Supabase, Model Relasional Dinamis & Clean Production Migration (supabase/schema.sql)
+- **Konteks & Kebutuhan Rekayasa (Opsi A):**
+  - Menyelaraskan skema database PostgreSQL Supabase ([supabase/schema.sql](file:///d:/CP-Arena/supabase/schema.sql)) dengan seluruh perubahan arsitektur dinamis terbaru (kohort dinamis, skuad snake-draft, audit trail anti-cheat, dan kebijakan clean-slate).
+  - Menghilangkan *hardcoding* 28 mahasiswa mock dari seed eksekutif database produksi agar saat `schema.sql` di-deploy ke Supabase, database bersih hanya berisi kredensial root Dosen Pembina / Admin (`ADMIN` & `DOSEN001`) dan template kohort awal.
+  - Memisahkan data mock/fixture ke dalam blok terisolasi (*demarcated commented block*) agar tim QA/Developer dapat membukanya hanya saat pengujian lokal/staging tanpa mencemari produksi.
+  - Membangun database-level view [student_questions_view](file:///d:/CP-Arena/supabase/schema.sql#L137) untuk mempertegas prinsip *Zero Answer & Editorial Leakage* pada level engine PostgreSQL Supabase.
+  - Memastikan seluruh relasi Foreign Key (`teams.id_cohort`, `users.id_cohort`, `submissions.nim`, `cohort_game_access`) dan indeks performa terdefinisi secara rapi dan konsisten.
+- **Implementasi Multi-Perspektif:**
+  - **Database & Backend Architecture:**
+    - [supabase/schema.sql](file:///d:/CP-Arena/supabase/schema.sql):
+      - **Tabel `cohorts`:** Menambahkan indeks `idx_cohorts_kode_kelas` dan `idx_cohorts_is_active` serta validasi regex format periode (`CHK chk_periode_format`).
+      - **Tabel `teams`:** Menambahkan foreign key `id_cohort VARCHAR(50) REFERENCES public.cohorts(id_cohort) ON DELETE SET NULL`, default `klub_hari = 'ALL'`, indeks `idx_teams_id_cohort`, dan indeks `idx_teams_kode_gabung`.
+      - **Tabel `users`:** Menyesuaikan avatar default dengan inisial monogram `'TH'` (Zero AI Slop), indeks `idx_users_id_tim`, dan relasi dinamis ke `cohorts`.
+      - **Tabel `games`:** Menambahkan kolom JSONB `cohort_statuses JSONB NOT NULL DEFAULT '{}'::JSONB` untuk pemetaan status akses per-kohort secara instan.
+      - **Tabel `submissions`:** Menambahkan kolom `tab_switch_log JSONB NOT NULL DEFAULT '[]'::JSONB` dan `shuffled_question_ids JSONB NOT NULL DEFAULT '[]'::JSONB` untuk sinkronisasi audit forensic anti-cheat.
+      - **View `student_questions_view`:** Mengenkapsulasi query soal mahasiswa sehingga kolom sensitif (`kunci_jawaban` dan `editorial`) dihilangkan pada tingkat database.
+      - **Row Level Security (RLS):** Mengaktifkan RLS pada seluruh 7 tabel utama dengan konfigurasi public read policies dan service-role write policies.
+  - **Clean Slate Data Engineering & Quality Management:**
+    - **Seed Produksi Bersih:** Hanya menginisialisasi 2 akun eksekutif (`ADMIN` dan `DOSEN001` - Tarq Hilmar Siregar, S.Kom) dengan monogram `TH`, 3 template kohort awal (`c-kamis`, `c-jumat`, `c-lomba` tanpa ikon slop), serta paket game G1-G7 dan bank soal.
+    - **Staging / Test Fixtures Demarcation:** 28 mahasiswa mock dan submisi dummy diisolasi dalam komentar blok berpagar jelas (`/* ... */`) untuk keperluan testing manual jika dibutuhkan.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 24 (Supabase PostgreSQL Schema & Relational Model Integrity)** dengan 26 assertions baru:
+        - Memvalidasi keberadaan 7 tabel utama dan 1 view anti-cheat pada file SQL.
+        - Memvalidasi keberadaan kolom relasional dinamis (`teams.id_cohort`, `submissions.tab_switch_log`, `submissions.shuffled_question_ids`, `games.cohort_statuses`).
+        - Memverifikasi kepatuhan *Zero Leakage* pada definisi view `student_questions_view`.
+        - Memverifikasi bahwa seed aktif produksi bersih 100% dari 28 mahasiswa mock (0 dummy data).
+        - Memverifikasi pengaktifan RLS pada seluruh tabel.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **384/384 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 42: Alur Onboarding Mahasiswa Baru, First-Login Password Change & Self-Profile Initialization (/api/auth/password)
+- **Konteks & Kebutuhan Rekayasa (Opsi B):**
+  - Mahasiswa baru yang didaftarkan oleh admin menggunakan kata sandi bawaan yang identik dengan NIM (`password === nim`). Kondisi ini menimbulkan kerentanan keamanan di mana mahasiswa lain dapat mengakses akun rekannya jika mengetahui NIM terdaftar.
+  - Membangun alur onboarding wajib perdana (*First-Login Mandatory Security Onboarding*) yang memaksa mahasiswa memperbarui kata sandi sebelum dapat mengakses dashboard, katalog kuis, maupun scoreboard ICPC.
+  - Menerapkan aturan pengerasan kata sandi (*password hardening*): minimal 6 karakter dan dilarang menggunakan NIM sebagai kata sandi baru.
+  - Memperbarui sistem autentikasi [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts) agar kata sandi lama (NIM) otomatis ditolak setelah berhasil diperbarui.
+  - Menghilangkan seluruh elemen AI Slop: antarmuka dirancang murni bertema Industrial Dark, checklist keamanan real-time berbasis teks monospace, dan menggunakan inisial monogram resmi STMIK TIME tanpa kartun/emoji/efek neon.
+- **Implementasi Multi-Perspektif:**
+  - **Backend & Security Engineering:**
+    - [src/types/arena.ts](file:///d:/CP-Arena/src/types/arena.ts):
+      - Menambahkan field `is_first_login?: boolean` dan `password_changed_at?: string` ke dalam interface `User`.
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - Menambahkan metode `changePassword(nim, oldPass, newPass)`: memvalidasi kecocokan kata sandi lama, memvalidasi aturan $\ge 6$ karakter dan $\ne \text{NIM}$, memperbarui kata sandi, dan mencatat timestamp ISO.
+      - Menambahkan metode `completeOnboarding({ nim, newPassword, codename, avatar })`: merangkum pembaruan kata sandi perdana dan kustomisasi identitas kompetisi dalam 1 transaksi atomik.
+      - Memperbarui metode `login(nim, pass)`: mengembalikan flag `requiresOnboarding` jika pengguna adalah `PESERTA` dan kata sandi masih default / `is_first_login !== false`, serta menolak penggunaan NIM sebagai kata sandi setelah akun diperbarui.
+    - [src/app/api/auth/password/route.ts](file:///d:/CP-Arena/src/app/api/auth/password/route.ts):
+      - Rute server-side Next.js App Router `POST /api/auth/password` untuk menangani aksi `change` dan `onboarding` dengan sanitasi input ketat dan error handling terstruktur.
+  - **Frontend & UI/UX Engineering (Zero AI Slop):**
+    - [src/components/arena/FirstLoginOnboardingModal.tsx](file:///d:/CP-Arena/src/components/arena/FirstLoginOnboardingModal.tsx):
+      - Komponen modal onboarding wajib berbasis [src/components/common/ModalPortal.tsx](file:///d:/CP-Arena/src/components/common/ModalPortal.tsx).
+      - Backdrop modal tidak dapat ditutup paksa sebelum prosedur ganti kata sandi selesai.
+      - Menampilkan kartu ringkasan identitas terdaftar (NIM, Nama Lengkap, Kohort).
+      - Menghadirkan checklist keamanan real-time bergaya utilitarian: minimal 6 karakter, tidak sama dengan NIM, dan konfirmasi kata sandi cocok.
+      - Pilihan kustomisasi contest handle / codename dengan monogram avatar resmi.
+    - [src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx):
+      - Memasang deteksi otomatis saat inisialisasi sesi mahasiswa: jika `currentUser.is_first_login !== false` atau kata sandi masih sama dengan NIM, modal onboarding langsung dimunculkan.
+    - [src/components/arena/ProfileTab.tsx](file:///d:/CP-Arena/src/components/arena/ProfileTab.tsx):
+      - Menambahkan Bagian 5: "Keamanan Akun & Perbarui Kata Sandi" agar mahasiswa dapat mengganti kata sandi kapan saja secara mandiri melalui tab profil.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 25 (Student Onboarding, First-Login Guard & Password Change Security)** dengan 24 assertions:
+        - Memverifikasi status `is_first_login === true` pada mahasiswa baru.
+        - Memverifikasi deteksi `requiresOnboarding === true` saat login perdana.
+        - Memverifikasi penolakan kata sandi pendek (< 6 karakter), kata sandi sama dengan NIM, dan kata sandi lama yang salah.
+        - Memverifikasi penolakan login menggunakan NIM lama setelah ganti kata sandi.
+        - Memverifikasi keberhasilan login dengan kata sandi baru dan transisi `requiresOnboarding === false`.
+        - Memverifikasi fungsi `completeOnboarding` atomik.
+        - Memverifikasi kekebalan peran `ADMIN` dari alur onboarding mahasiswa.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **408/408 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.

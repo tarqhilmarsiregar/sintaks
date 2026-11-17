@@ -95,7 +95,7 @@ export default function AdminStudentMonitorTab({
   const [formNama, setFormNama] = useState('');
   const [formCodename, setFormCodename] = useState('');
   const [formCohortId, setFormCohortId] = useState<string>(() => (ArenaStore.getCohorts()[0]?.id_cohort || ''));
-  const [formClass, setFormClass] = useState<KlubHari>('KAMIS');
+  const [formClass, setFormClass] = useState<KlubHari>('ALL');
   const [formProdi, setFormProdi] = useState('Sistem Informasi');
   const [formAngkatan, setFormAngkatan] = useState('2025');
   const [formKelasReguler, setFormKelasReguler] = useState('SI C 25');
@@ -119,9 +119,7 @@ export default function AdminStudentMonitorTab({
     return true;
   });
 
-  const countKamis = users.filter(u => u.role === 'PESERTA' && u.klub_hari === 'KAMIS').length;
-  const countJumat = users.filter(u => u.role === 'PESERTA' && u.klub_hari === 'JUMAT').length;
-  const countLomba = users.filter(u => u.role === 'PESERTA' && u.klub_hari === 'LOMBA').length;
+  const totalStudentsCount = users.filter(u => u.role === 'PESERTA').length;
 
   const handleCreateCohortSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,9 +302,11 @@ export default function AdminStudentMonitorTab({
     const selectedCohort = cohorts.find(c => c.id_cohort === formCohortId) || cohorts[0];
     let resolvedKlubHari: KlubHari = formRole === 'ADMIN' ? 'ALL' : formClass;
     if (formRole !== 'ADMIN' && selectedCohort) {
-      if (selectedCohort.id_cohort === 'c-jumat') resolvedKlubHari = 'JUMAT';
-      else if (selectedCohort.id_cohort === 'c-lomba') resolvedKlubHari = 'LOMBA';
-      else resolvedKlubHari = 'KAMIS';
+      if (selectedCohort.kode_kelas === 'KAMIS' || selectedCohort.kode_kelas === 'JUMAT' || selectedCohort.kode_kelas === 'LOMBA') {
+        resolvedKlubHari = selectedCohort.kode_kelas as KlubHari;
+      } else {
+        resolvedKlubHari = 'ALL';
+      }
     }
 
     const res = onAddUser({
@@ -346,7 +346,7 @@ export default function AdminStudentMonitorTab({
             </h2>
           </div>
           <p className="text-xs text-slate-400 font-mono mt-1 max-w-3xl">
-            Manajemen akun mahasiswa dan dosen. Admin dapat menambahkan akun baru secara manual dan meng-assign ke Kelas KAMIS, JUMAT, atau Kelas LOMBA secara independen.
+            Manajemen akun mahasiswa dan dosen. Admin dapat menambahkan akun baru secara manual dan meng-assign ke kelas / kohort pembelajaran secara dinamis.
           </p>
         </div>
 
@@ -427,138 +427,190 @@ export default function AdminStudentMonitorTab({
         </div>
       </div>
 
-      {/* 3. Students Table (Responsive Container) */}
-      <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl overflow-hidden shadow-sm">
-        <div className="p-3.5 border-b border-[#1e293b] bg-[#080d1a] flex items-center justify-between text-xs font-mono">
-          <span className="font-bold text-white">
-            Menampilkan {filteredUsers.length} Mahasiswa
-          </span>
-          <span className="text-slate-400 text-xs">
-            Data tersinkronisasi langsung dari database pangkalan STMIK TIME
-          </span>
+      {/* 3. Students Content (Zero-State Card atau Active Table) */}
+      {totalStudentsCount === 0 ? (
+        <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl p-10 sm:p-14 text-center shadow-sm">
+          <div className="w-14 h-14 mx-auto rounded-xl bg-[#111827] border border-[#1e293b] flex items-center justify-center text-slate-400 mb-4">
+            <GraduationCap className="w-7 h-7 text-blue-400" />
+          </div>
+          <h3 className="text-lg font-bold text-white mb-2">Belum Ada Mahasiswa Terdaftar</h3>
+          <p className="text-xs text-slate-400 font-mono max-w-md mx-auto mb-6 leading-relaxed">
+            Direktori mahasiswa masih kosong. Buat kelas atau kohort terlebih dahulu jika belum ada, kemudian daftarkan akun mahasiswa baru secara manual.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {cohorts.length === 0 && (
+              <button
+                onClick={() => {
+                  setCohortModalError('');
+                  setCohortModalSuccess('');
+                  setShowCohortModal(true);
+                }}
+                className="px-4 py-2 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] text-slate-200 hover:text-white font-mono text-xs font-bold shadow-sm transition-colors flex items-center gap-2"
+              >
+                <Layers className="w-4 h-4 text-blue-400" />
+                <span>+ Buat Kelas / Kohort</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setModalError('');
+                setShowAddModal(true);
+              }}
+              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold shadow-sm transition-colors flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4 text-blue-100" />
+              <span>+ Tambah Akun Baru</span>
+            </button>
+          </div>
         </div>
+      ) : (
+        <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl overflow-hidden shadow-sm">
+          <div className="p-3.5 border-b border-[#1e293b] bg-[#080d1a] flex items-center justify-between text-xs font-mono">
+            <span className="font-bold text-white">
+              Menampilkan {filteredUsers.length} Mahasiswa
+            </span>
+            <span className="text-slate-400 text-xs font-mono">
+              Pangkalan Data Mahasiswa &amp; Kredensial STMIK TIME
+            </span>
+          </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-mono min-w-[850px]">
-            <thead className="bg-[#111827] text-slate-400 border-b border-[#1e293b]">
-              <tr>
-                <th className="p-3.5">NIM &amp; Kelas</th>
-                <th className="p-3.5">Mahasiswa (Monogram)</th>
-                <th className="p-3.5">Program Studi &amp; Angkatan</th>
-                <th className="p-3.5">Level &amp; Tier</th>
-                <th className="p-3.5">Performa Akademik</th>
-                <th className="p-3.5 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1e293b]">
-              {filteredUsers.length === 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono min-w-[850px]">
+              <thead className="bg-[#111827] text-slate-400 border-b border-[#1e293b]">
                 <tr>
-                  <td colSpan={6} className="p-10 text-center text-slate-500">
-                    Tidak ada mahasiswa yang cocok dengan filter.
-                  </td>
+                  <th className="p-3.5">NIM &amp; Kelas</th>
+                  <th className="p-3.5">Mahasiswa (Monogram)</th>
+                  <th className="p-3.5">Program Studi &amp; Angkatan</th>
+                  <th className="p-3.5">Level &amp; Tier</th>
+                  <th className="p-3.5">Performa Akademik</th>
+                  <th className="p-3.5 text-right">Aksi</th>
                 </tr>
-              ) : (
-                filteredUsers.map((u) => {
-                  const userSubs = submissions.filter(s => s.nim === u.nim && s.status_sesi === 'DONE');
-                  const solvedCount = userSubs.filter(s => s.status_lulus === 'LULUS' || s.nilai_akademik >= 50).length;
-                  const totalNilai = userSubs.reduce((acc, s) => acc + s.nilai_akademik, 0);
-                  const rataNilai = userSubs.length > 0 ? Math.round(totalNilai / userSubs.length) : 0;
+              </thead>
+              <tbody className="divide-y divide-[#1e293b]">
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-10 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <span>Tidak ada mahasiswa yang cocok dengan filter atau pencarian.</span>
+                        {(classFilter !== 'ALL' || searchQuery.trim() !== '') && (
+                          <button
+                            onClick={() => {
+                              setClassFilter('ALL');
+                              setSearchQuery('');
+                            }}
+                            className="text-xs text-blue-400 hover:text-blue-300 underline font-mono font-bold"
+                          >
+                            Reset Filter &amp; Pencarian
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((u) => {
+                    const userSubs = submissions.filter(s => s.nim === u.nim && s.status_sesi === 'DONE');
+                    const solvedCount = userSubs.filter(s => s.status_lulus === 'LULUS' || s.nilai_akademik >= 50).length;
+                    const totalNilai = userSubs.reduce((acc, s) => acc + s.nilai_akademik, 0);
+                    const rataNilai = userSubs.length > 0 ? Math.round(totalNilai / userSubs.length) : 0;
 
-                  return (
-                    <tr key={u.nim} className="hover:bg-[#111827]/60 transition-colors">
-                      {/* NIM & Kelas */}
-                      <td className="p-3.5">
-                        <span className="font-bold text-white">{u.nim}</span>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                          <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${
-                            u.klub_hari === 'LOMBA'
-                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                              : 'bg-blue-500/10 text-blue-300 border-blue-500/25'
-                          }`}>
-                            Kelas {u.klub_hari}
-                          </span>
-                          {u.periode && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono text-slate-400 bg-slate-800/60 border border-slate-700/50">
-                              {u.periode}
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                    return (
+                      <tr key={u.nim} className="hover:bg-[#111827]/60 transition-colors">
+                        {/* NIM & Kelas */}
+                        <td className="p-3.5">
+                          <span className="font-bold text-white">{u.nim}</span>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                            {(() => {
+                              const cohortObj = cohorts.find(c => c.id_cohort === u.id_cohort || c.kode_kelas === u.id_cohort || c.kode_kelas === u.klub_hari);
+                              const label = cohortObj ? cohortObj.nama_kelas : (u.klub_hari && u.klub_hari !== 'ALL' ? `Kelas ${u.klub_hari}` : 'Reguler');
+                              return (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-bold border bg-blue-500/10 text-blue-300 border-blue-500/25">
+                                  {label}
+                                </span>
+                              );
+                            })()}
+                            {u.periode && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono text-slate-400 bg-slate-800/60 border border-slate-700/50">
+                                {u.periode}
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
-                      {/* Mahasiswa Info dengan Industrial Monochrome Avatar */}
-                      <td className="p-3.5">
-                        <div className="flex items-center gap-2.5">
-                          <UserAvatar user={u} size="md" />
-                          <div className="min-w-0">
-                            <div className="font-bold text-white text-sm truncate">
-                              {u.nama_lengkap}
-                            </div>
-                            <div className="text-xs text-blue-400 font-bold mt-0.5">
-                              @{u.codename}
+                        {/* Mahasiswa Info dengan Industrial Monochrome Avatar */}
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <UserAvatar user={u} size="md" />
+                            <div className="min-w-0">
+                              <div className="font-bold text-white text-sm truncate">
+                                {u.nama_lengkap}
+                              </div>
+                              <div className="text-xs text-blue-400 font-bold mt-0.5">
+                                @{u.codename}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Prodi & Kelas Reguler */}
-                      <td className="p-3.5">
-                        <div className="text-slate-300 font-bold">
-                          {u.prodi} ({u.angkatan})
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {u.kelas_reguler}
-                        </div>
-                      </td>
+                        {/* Prodi & Kelas Reguler */}
+                        <td className="p-3.5">
+                          <div className="text-slate-300 font-bold">
+                            {u.prodi} ({u.angkatan})
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {u.kelas_reguler}
+                          </div>
+                        </td>
 
-                      {/* Level & Tier Badge */}
-                      <td className="p-3.5">
-                        <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                          <Flame className="w-3.5 h-3.5" />
-                          <span>Level {u.level}</span>
-                        </div>
-                        <div className="text-xs text-slate-400 mt-0.5">
-                          {u.tier_badge}
-                        </div>
-                      </td>
+                        {/* Level & Tier Badge */}
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                            <Flame className="w-3.5 h-3.5" />
+                            <span>Level {u.level}</span>
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            {u.tier_badge}
+                          </div>
+                        </td>
 
-                      {/* Total XP & Rata Nilai */}
-                      <td className="p-3.5">
-                        <div className="font-extrabold text-blue-400">
-                          {u.total_xp} <span className="text-[10px] font-normal text-slate-400">XP</span>
-                        </div>
-                        <div className="text-xs text-slate-400 mt-0.5">
-                          Rata: <strong className={rataNilai >= 70 ? 'text-emerald-400' : 'text-amber-400'}>{rataNilai}/100</strong> • {solvedCount} AC
-                        </div>
-                      </td>
+                        {/* Total XP & Rata Nilai */}
+                        <td className="p-3.5">
+                          <div className="font-extrabold text-blue-400">
+                            {u.total_xp} <span className="text-[10px] font-normal text-slate-400">XP</span>
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            Rata: <strong className={rataNilai >= 70 ? 'text-emerald-400' : 'text-amber-400'}>{rataNilai}/100</strong> • {solvedCount} AC
+                          </div>
+                        </td>
 
-                      {/* Aksi Kelola Progres & Delete */}
-                      <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenManageModal(u)}
-                            className="px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] hover:border-blue-500/40 text-blue-400 hover:text-white transition-all flex items-center gap-1.5 font-bold shadow-sm"
-                            title={`Kelola Progres, Edit Nilai & Reset ${u.nama_lengkap} (${u.nim})`}
-                          >
-                            <Settings className="w-3.5 h-3.5 text-blue-400" />
-                            <span className="text-[11px]">Kelola</span>
-                          </button>
-                          <button
-                            onClick={() => setDeletingStudent(u)}
-                            className="p-1.5 rounded-lg bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/30 hover:border-rose-500/50 text-rose-300 hover:text-white transition-all shadow-sm"
-                            title={`Hapus Akun ${u.nama_lengkap} (${u.nim})`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        {/* Aksi Kelola Progres & Delete */}
+                        <td className="p-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleOpenManageModal(u)}
+                              className="px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] hover:border-blue-500/40 text-blue-400 hover:text-white transition-all flex items-center gap-1.5 font-bold shadow-sm"
+                              title={`Kelola Progres, Edit Nilai & Reset ${u.nama_lengkap} (${u.nim})`}
+                            >
+                              <Settings className="w-3.5 h-3.5 text-blue-400" />
+                              <span className="text-[11px]">Kelola</span>
+                            </button>
+                            <button
+                              onClick={() => setDeletingStudent(u)}
+                              className="p-1.5 rounded-lg bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/30 hover:border-rose-500/50 text-rose-300 hover:text-white transition-all shadow-sm"
+                              title={`Hapus Akun ${u.nama_lengkap} (${u.nim})`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 4. MODAL TAMBAH AKUN BARU (CLEAN INDUSTRIAL FORM) */}
       {showAddModal && (
@@ -697,9 +749,11 @@ export default function AdminStudentMonitorTab({
                             setFormCohortId(selectedId);
                             const c = cohorts.find(ch => ch.id_cohort === selectedId);
                             if (c) {
-                              if (c.id_cohort === 'c-jumat') setFormClass('JUMAT');
-                              else if (c.id_cohort === 'c-lomba') setFormClass('LOMBA');
-                              else setFormClass('KAMIS');
+                              if (c.kode_kelas === 'KAMIS' || c.kode_kelas === 'JUMAT' || c.kode_kelas === 'LOMBA') {
+                                setFormClass(c.kode_kelas as KlubHari);
+                              } else {
+                                setFormClass('ALL');
+                              }
                             }
                           }}
                           className="w-full bg-[#111827] border border-[#1e293b] rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500 font-bold"

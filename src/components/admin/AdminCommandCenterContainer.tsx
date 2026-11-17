@@ -13,6 +13,7 @@ import AdminSubmissionsTab from '@/components/admin/tabs/AdminSubmissionsTab';
 import AdminTeamDraftTab from '@/components/admin/tabs/AdminTeamDraftTab';
 import AdminStudentMonitorTab from '@/components/admin/tabs/AdminStudentMonitorTab';
 import AdminExportTab from '@/components/admin/tabs/AdminExportTab';
+import { generateAcademicExportData, downloadAcademicExport } from '@/lib/export-service';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 export type { AdminActiveTab };
@@ -179,18 +180,72 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
     }
   };
 
-  // --- TEAM ACTIONS (SNAKE DRAFT) ---
+  // --- TEAM ACTIONS (SNAKE DRAFT & DYNAMIC COHORTS) ---
   const handleGenerateTeams = (klubHari: KlubHari) => {
-    ArenaStore.generateTeamsForClass(klubHari);
+    const res = ArenaStore.generateTeamsForCohort(klubHari, 3);
     refreshData();
-    showAlert(`Tim berimbang (Snake-Draft) untuk Kelas ${klubHari} berhasil dibuat!`);
+    showAlert(res.message, res.success ? 'success' : 'error');
   };
 
   const handleDisbandTeams = (klubHari: KlubHari) => {
-    if (!confirm(`Bubarkan seluruh tim untuk Kelas ${klubHari}?`)) return;
-    ArenaStore.disbandTeamsForClass(klubHari);
+    const res = ArenaStore.disbandTeamsForCohort(klubHari);
     refreshData();
-    showAlert(`Seluruh tim Kelas ${klubHari} berhasil dibubarkan.`);
+    showAlert(res.message, res.success ? 'success' : 'error');
+  };
+
+  const handleGenerateCohortTeams = (cohortId: string, teamSize: number) => {
+    const res = ArenaStore.generateTeamsForCohort(cohortId, teamSize);
+    if (res.success) {
+      refreshData();
+      showAlert(res.message, 'success');
+    } else {
+      showAlert(res.message, 'error');
+    }
+    return res;
+  };
+
+  const handleDisbandCohortTeams = (cohortId: string) => {
+    const res = ArenaStore.disbandTeamsForCohort(cohortId);
+    if (res.success) {
+      refreshData();
+      showAlert(res.message, 'success');
+    } else {
+      showAlert(res.message, 'error');
+    }
+    return res;
+  };
+
+  const handleDisbandSingleTeam = (teamId: string) => {
+    const res = ArenaStore.disbandTeam(teamId, 'ADMIN');
+    if (res.success) {
+      refreshData();
+      showAlert(res.message, 'success');
+    } else {
+      showAlert(res.message, 'error');
+    }
+    return res;
+  };
+
+  const handleUpdateTeam = (teamId: string, updates: { nama_tim?: string; leader_nim?: string }) => {
+    const res = ArenaStore.updateTeamDetails(teamId, updates);
+    if (res.success) {
+      refreshData();
+      showAlert(res.message, 'success');
+    } else {
+      showAlert(res.message, 'error');
+    }
+    return res;
+  };
+
+  const handleMoveMember = (nim: string, targetTeamId: string) => {
+    const res = ArenaStore.moveTeamMember(nim, targetTeamId);
+    if (res.success) {
+      refreshData();
+      showAlert(res.message, 'success');
+    } else {
+      showAlert(res.message, 'error');
+    }
+    return res;
   };
 
   // --- STUDENT RESET & PROGRESS MANAGEMENT ---
@@ -233,107 +288,22 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
   };
 
   // --- EXPORT EXCEL VIA CLIENT XLSX INJECTION ---
-  const handleExportExcel = (klubHari: KlubHari) => {
+  const handleExportExcel = (cohortIdOrCode: string = 'ALL', cohortName?: string) => {
     try {
-      const filteredUsers = users.filter(u => u.role === 'PESERTA' && (klubHari === 'ALL' || u.klub_hari === klubHari));
-
-      // Sheet 1: Rekap Nilai
-      const rekapNilaiData = filteredUsers.map(u => {
-        const userSubs = submissions.filter(s => s.nim === u.nim && s.status_sesi === 'DONE');
-        const totalNilai = userSubs.reduce((acc, s) => acc + s.nilai_akademik, 0);
-        const rataNilai = userSubs.length > 0 ? Math.round(totalNilai / userSubs.length) : 0;
-        const maxNilai = userSubs.length > 0 ? Math.max(...userSubs.map(s => s.nilai_akademik)) : 0;
-        const totalTab = userSubs.reduce((acc, s) => acc + s.tab_switch_count, 0);
-
-        return {
-          NIM: u.nim,
-          Nama_Lengkap: u.nama_lengkap,
-          Codename: u.codename,
-          Prodi: u.prodi,
-          Angkatan: u.angkatan,
-          Kelas_Reguler: u.kelas_reguler,
-          Klub_Hari: u.klub_hari,
-          Game_Selesai: `${userSubs.length}/${games.length}`,
-          Rata_Nilai_Akhir: rataNilai,
-          Nilai_Terbaik: maxNilai,
-          Total_Pindah_Tab: totalTab,
-          Akumulasi_Penalti: `-${totalTab * 5}`,
-          Total_XP: u.total_xp,
-          Level: u.level,
-          Status_Ketuntasan: rataNilai >= 70 ? 'TUNTAS' : 'BELUM TUNTAS'
-        };
+      const exportResult = generateAcademicExportData({
+        users,
+        submissions,
+        games,
+        cohorts,
+        targetCohortIdOrCode: cohortIdOrCode,
+        targetCohortName: cohortName,
       });
 
-      // Sheet 2: Diagnostik Materi
-      const diagnostikData = filteredUsers.map(u => {
-        return {
-          NIM: u.nim,
-          Nama_Lengkap: u.nama_lengkap,
-          Codename: u.codename,
-          Klub_Hari: u.klub_hari,
-          Level: u.level,
-          Tier_Badge: u.tier_badge,
-          Kategori_Fokus: 'Big-O & Game Theory',
-          Indikasi_Akademik: u.total_xp >= 800 ? '🟢 Sangat Menguasai' : u.total_xp >= 400 ? '🟡 Cukup' : '🔴 Butuh Pengayaan',
-          Rekomendasi_Modul: u.total_xp >= 800 ? 'Pengayaan Lanjut' : 'Review Modul & Colab Pertemuan 1'
-        };
-      });
-
-      // Sheet 3: Log Detail Submisi
-      const logDetailData = submissions
-        .filter(s => {
-          if (klubHari === 'ALL') return true;
-          const owner = users.find(u => u.nim === s.nim);
-          return owner?.klub_hari === klubHari;
-        })
-        .map(s => ({
-          ID_Submisi: s.id_submission,
-          Waktu: new Date(s.timestamp_mulai).toLocaleString('id-ID'),
-          NIM: s.nim,
-          Codename: s.codename,
-          ID_Game: s.id_game,
-          Jumlah_Benar: s.jumlah_benar,
-          Total_Soal: s.total_soal,
-          Nilai_Akademik: s.nilai_akademik,
-          Penalti_Tab: s.tab_switch_count * 5,
-          Skor_XP: s.skor_xp,
-          Status_Kelulusan: s.status_lulus
-        }));
-
-      // Inisialisasi Script SheetJS jika tersedia di window
-      const win = typeof window !== 'undefined' ? (window as any) : null;
-      if (win && typeof win.XLSX !== 'undefined') {
-        const wb = win.XLSX.utils.book_new();
-
-        const ws1 = win.XLSX.utils.json_to_sheet(rekapNilaiData);
-        win.XLSX.utils.book_append_sheet(wb, ws1, `Rekap_Nilai_${klubHari}`);
-
-        const ws2 = win.XLSX.utils.json_to_sheet(diagnostikData);
-        win.XLSX.utils.book_append_sheet(wb, ws2, `Diagnostik_${klubHari}`);
-
-        const ws3 = win.XLSX.utils.json_to_sheet(logDetailData);
-        win.XLSX.utils.book_append_sheet(wb, ws3, `Log_Detail_${klubHari}`);
-
-        win.XLSX.writeFile(wb, `STMIK_TIME_CP_ARENA_${klubHari}_${new Date().toISOString().slice(0, 10)}.xlsx`);
-        showAlert(`Laporan Excel Resmi Kelas ${klubHari} (.xlsx 3-Sheet) berhasil diunduh!`);
-      } else {
-        // Fallback CSV download dengan UTF-8 BOM agar Excel membukanya secara sempurna
-        const csvContent = "\uFEFF" + 
-          Object.keys(rekapNilaiData[0] || {}).join(";") + "\n" +
-          rekapNilaiData.map(e => Object.values(e).join(";")).join("\n");
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `Rekap_Nilai_${klubHari}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showAlert(`Data CSV Kelas ${klubHari} berhasil diunduh.`);
-      }
+      const res = downloadAcademicExport(exportResult);
+      showAlert(res.message, res.success ? 'success' : 'error');
     } catch (err) {
       console.error(err);
-      showAlert('Gagal mengekspor laporan Excel.', 'error');
+      showAlert('Gagal mengekspor laporan akademik.', 'error');
     }
   };
 
@@ -445,8 +415,17 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
           {activeAdminTab === 'teams' && (
             <AdminTeamDraftTab
               teams={teams}
+              users={users}
+              cohorts={cohorts}
               onGenerateTeams={handleGenerateTeams}
               onDisbandTeams={handleDisbandTeams}
+              onGenerateCohortTeams={handleGenerateCohortTeams}
+              onDisbandCohortTeams={handleDisbandCohortTeams}
+              onDisbandSingleTeam={handleDisbandSingleTeam}
+              onUpdateTeam={handleUpdateTeam}
+              onMoveMember={handleMoveMember}
+              onRefresh={refreshData}
+              onAlert={showAlert}
             />
           )}
 
@@ -470,8 +449,10 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
               users={users}
               submissions={submissions}
               games={games}
+              cohorts={cohorts}
               onExportExcel={handleExportExcel}
               onResetGlobal={handleResetGlobal}
+              onCreateCohortClick={() => router.push('/admin/students')}
             />
           )}
         </main>

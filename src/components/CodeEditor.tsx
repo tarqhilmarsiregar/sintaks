@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Play, Send, Copy, Check, Terminal, Settings2, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Play, Send, Copy, Check, Terminal, Settings2, RefreshCw, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { SupportedLanguage, TestCase, Verdict } from '@/types';
 import { CODE_STARTERS } from '@/lib/mock-data';
 import { evaluateCode, EvaluationResult } from '@/lib/judge/evaluator';
 import VerdictBadge from './VerdictBadge';
 import { fireConfetti } from '@/lib/confetti';
+import ModalPortal from '@/components/common/ModalPortal';
 
 interface CodeEditorProps {
   problemSlug: string;
@@ -34,6 +35,7 @@ export default function CodeEditor({
   const [selectedSampleIndex, setSelectedSampleIndex] = useState<number>(0);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
 
   // Switch template code when language changes
   const handleLanguageChange = (newLang: SupportedLanguage) => {
@@ -43,11 +45,16 @@ export default function CodeEditor({
     }
   };
 
-  // Reset to default template
+  // Reset to default template (Zero AI Slop Modal)
   const handleResetTemplate = () => {
-    if (confirm('Kembalikan kode ke template awal? Kode saat ini akan ditimpa.')) {
+    setShowResetModal(true);
+  };
+
+  const handleConfirmReset = () => {
+    if (CODE_STARTERS[language]) {
       setCode(CODE_STARTERS[language].default);
     }
+    setShowResetModal(false);
   };
 
   // Copy code to clipboard
@@ -405,6 +412,58 @@ export default function CodeEditor({
           )}
         </div>
       </div>
+
+      {/* Confirmation Modal Reset Template (Zero AI Slop / Industrial UX) */}
+      {showResetModal && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-[#0b1120] border border-[#1e293b] rounded-xl max-w-md w-full shadow-2xl p-6 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                    <RefreshCw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-white">Reset Template Kode?</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Kode yang sudah ditulis akan ditimpa dengan template default.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-[#111827] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-3 rounded-lg bg-[#060a14] border border-[#1e293b] text-xs text-slate-300 leading-relaxed">
+                Apakah Anda yakin ingin mengembalikan kode ke boilerplate awal <span className="font-mono text-blue-400 font-semibold">{language.toUpperCase()}</span>? Seluruh modifikasi kode Anda saat ini akan hilang.
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#1e293b]">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="px-4 py-2 rounded-lg bg-[#111827] hover:bg-[#1a2333] border border-[#1e293b] text-xs text-slate-300 font-medium transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReset}
+                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs text-white font-semibold transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Ya, Reset Template</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
     </div>
   );
 }
