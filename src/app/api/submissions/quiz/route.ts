@@ -7,6 +7,7 @@ import {
   calculateLevelInfo,
   calculateQuestionXP,
 } from '@/lib/gamification';
+import { seededShuffle } from '@/lib/shuffle';
 import { Submission } from '@/types/arena';
 import { SESSION_COOKIE_NAME, SessionPayload, verifySessionToken } from '@/lib/security/session';
 
@@ -23,9 +24,9 @@ function isSubmissionOwnedBySession(sub: Submission, session: SessionPayload | n
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action, submissionId } = body;
+    const { action, submissionId, idGame } = body;
 
-    if (!submissionId) {
+    if (action !== 'start' && !submissionId) {
       return NextResponse.json(
         { error: 'ID Submisi sesi kuis wajib disertakan.' },
         { status: 400 }
@@ -43,6 +44,102 @@ export async function POST(req: NextRequest) {
           { status: 401 }
         );
       }
+    }
+
+    // 0. ACTION: START QUIZ SESSION (Authoritative Server Session Creation + Cohort Access Check)
+    if (action === 'start') {
+      if (!idGame || typeof idGame !== 'string') {
+        return NextResponse.json(
+          { error: 'ID Paket Game wajib disertakan untuk memulai sesi kuis.' },
+          { status: 400 }
+        );
+      }
+
+      if (useSupabase && activeSession) {
+        const [user, game] = await Promise.all([
+          SupabaseArenaRepo.getUserByNim(activeSession.nim),
+          SupabaseArenaRepo.getGameById(idGame),
+        ]);
+
+        if (!user) {
+          return NextResponse.json({ error: 'Pengguna tidak ditemukan di database.' }, { status: 404 });
+        }
+        if (!game) {
+          return NextResponse.json({ error: 'Paket kontes tidak ditemukan di database.' }, { status: 404 });
+        }
+
+        // Validasi Isolasi Kohort SSOT (cohort.allowed_game_ids) untuk peserta
+        if (activeSession.role !== 'ADMIN') {
+          const cohortKey = user.id_cohort || (user.klub_hari !== 'ALL' ? user.klub_hari : '');
+          const cohort = cohortKey ? await SupabaseArenaRepo.getCohortById(cohortKey) : null;
+          const isAllowed = Boolean(
+            cohort && Array.isArray(cohort.allowed_game_ids) && cohort.allowed_game_ids.includes(game.id_game)
+          );
+          if (!isAllowed) {
+            return NextResponse.json(
+              { error: 'Akses ditolak (403): Paket soal ini tidak ditugaskan untuk kelas Anda.' },
+              { status: 403 }
+            );
+          }
+        }
+
+        // Kembalikan sesi eksisting bila peserta sudah pernah memulai / menyelesaikan game ini
+        const existing = await SupabaseArenaRepo.getSubmissionByUserAndGame(user.nim, game.id_game);
+        if (existing) {
+          return NextResponse.json({
+            success: true,
+            mode: 'supabase',
+            resumed: true,
+            submission: existing,
+          });
+        }
+
+        const questions = await SupabaseArenaRepo.getQuestionsByGameId(game.id_game);
+        const shuffledIds = seededShuffle(questions, `${user.nim}_${game.id_game}_QUIZ_SEED`).map(
+          (q) => q.id_soal
+        );
+        const now = new Date().toISOString();
+
+        const newSub: Submission = {
+          id_submission:
+            typeof submissionId === 'string' && submissionId.trim()
+              ? submissionId.trim()
+              : `SUB-${user.nim}-${game.id_game}-${Date.now().toString(36).toUpperCase()}`,
+          timestamp_mulai: now,
+          timestamp_update: now,
+          nim: user.nim,
+          codename: user.codename,
+          klub_hari: user.klub_hari,
+          id_game: game.id_game,
+          mode_game: game.mode_game,
+          id_tim: user.id_tim || '',
+          skor_xp: 0,
+          nilai_akademik: 0,
+          jumlah_benar: 0,
+          total_soal: questions.length,
+          status_lulus: 'BELUM LULUS',
+          streak_saat_ini: 0,
+          tab_switch_count: 0,
+          tab_switch_log: [],
+          shuffled_question_ids: shuffledIds,
+          status_sesi: 'ACTIVE',
+          detail_jawaban_json: [],
+        };
+
+        const saved = await SupabaseArenaRepo.upsertSubmission(newSub);
+        return NextResponse.json({
+          success: true,
+          mode: 'supabase',
+          resumed: false,
+          submission: saved || newSub,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        mode: 'local',
+        message: 'Mode lokal: sesi dikelola oleh ArenaStore client.',
+      });
     }
 
     // 1. ACTION: RECORD TAB-SWITCH VIOLATION

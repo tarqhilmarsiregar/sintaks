@@ -34,9 +34,9 @@ export default function VerdictBadge({ verdict, showIcon = true, className = '' 
       case 'RE':
         return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
       case 'PENDING':
-        return 'bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse';
+        return 'bg-blue-500/15 text-blue-400 border-blue-500/30';
       case 'RUNNING':
-        return 'bg-sky-500/15 text-sky-400 border-sky-500/30 animate-pulse';
+        return 'bg-sky-500/15 text-sky-400 border-sky-500/30';
       default:
         return 'bg-gray-500/15 text-gray-400 border-gray-500/30';
     }

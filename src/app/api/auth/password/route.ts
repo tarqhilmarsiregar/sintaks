@@ -28,13 +28,13 @@ export async function POST(req: NextRequest) {
       const session = await verifySessionToken(token);
       if (!session) {
         return NextResponse.json(
-          { error: 'Akses ditolak (401): Sesi login tidak valid.' },
+          { success: false, mode: 'supabase', error: 'Akses ditolak (401): Sesi login tidak valid. Silakan login ulang.' },
           { status: 401 }
         );
       }
       if (session.role !== 'ADMIN' && session.nim.toUpperCase() !== nim.trim().toUpperCase()) {
         return NextResponse.json(
-          { error: 'Akses ditolak (403): Anda tidak berwenang mengubah kata sandi akun mahasiswa lain.' },
+          { success: false, mode: 'supabase', error: 'Akses ditolak (403): Anda tidak berwenang mengubah kata sandi akun mahasiswa lain.' },
           { status: 403 }
         );
       }
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
         if (dbRes) {
           if (!dbRes.success) {
-            return NextResponse.json({ error: dbRes.message }, { status: 400 });
+            return NextResponse.json({ success: false, mode: 'supabase', error: dbRes.message }, { status: 400 });
           }
           return NextResponse.json({
             success: true,
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
 
         if (dbRes) {
           if (!dbRes.success) {
-            return NextResponse.json({ error: dbRes.message }, { status: 400 });
+            return NextResponse.json({ success: false, mode: 'supabase', error: dbRes.message }, { status: 400 });
           }
           return NextResponse.json({
             success: true,
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
         const dbRes = await SupabaseArenaRepo.adminResetUserPassword(nim);
         if (dbRes) {
           if (!dbRes.success) {
-            return NextResponse.json({ error: dbRes.message }, { status: 400 });
+            return NextResponse.json({ success: false, mode: 'supabase', error: dbRes.message }, { status: 400 });
           }
           return NextResponse.json({
             success: true,

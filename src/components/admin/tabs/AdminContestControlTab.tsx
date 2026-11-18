@@ -171,7 +171,8 @@ export default function AdminContestControlTab({
     setFormDurasiTotal(30);
     setFormDurasiSoal(60);
     setFormMinNilai(70);
-    setFormAllowedCohorts(activeCohorts.map(c => c.id_cohort));
+    // Default aman: [] (Draft / Belum Ditugaskan) agar tidak membocorkan paket baru ke seluruh kelas
+    setFormAllowedCohorts([]);
     setFormInitialStatus('UPCOMING');
     setFormError(null);
     setShowCreateModal(true);
@@ -367,8 +368,9 @@ export default function AdminContestControlTab({
 
             {activeCohorts.map(cohort => {
               const isSelected = selectedCohortId === cohort.id_cohort;
-              const openCount = games.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'OPEN').length;
-              const frozenCount = games.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'FROZEN').length;
+              const cohortGames = games.filter(g => cohort.allowed_game_ids?.includes(g.id_game));
+              const openCount = cohortGames.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'OPEN').length;
+              const frozenCount = cohortGames.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'FROZEN').length;
 
               return (
                 <button
@@ -382,7 +384,7 @@ export default function AdminContestControlTab({
                 >
                   <span>{cohort.nama_kelas}</span>
                   {openCount > 0 && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title={`${openCount} Game OPEN`} />
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" title={`${openCount} Game OPEN`} />
                   )}
                   {frozenCount > 0 && (
                     <span className="w-2 h-2 rounded-full bg-amber-400" title={`${frozenCount} Game FROZEN`} />
@@ -398,8 +400,9 @@ export default function AdminContestControlTab({
           <div className="pt-2 border-t border-[#1e293b] flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-400 font-bold">Quick Master Freeze:</span>
             {displayCohorts.map(cohort => {
-              const openCount = games.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'OPEN').length;
-              const frozenCount = games.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'FROZEN').length;
+              const cohortGames = games.filter(g => cohort.allowed_game_ids?.includes(g.id_game));
+              const openCount = cohortGames.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'OPEN').length;
+              const frozenCount = cohortGames.filter(g => getStatusForCohort(g, cohort.id_cohort) === 'FROZEN').length;
 
               return (
                 <div
@@ -567,16 +570,27 @@ export default function AdminContestControlTab({
                   const icpcMeta = ICPC_PROBLEMS_DEF.find(p => p.gameId === game.id_game);
                   const letter = icpcMeta?.letter || String.fromCharCode(65 + (idx % 26));
                   const balloonEmoji = icpcMeta?.balloonEmoji || '⚪';
+                  const assignedCohortCount = activeCohorts.filter(
+                    c => Array.isArray(c.allowed_game_ids) && c.allowed_game_ids.includes(game.id_game)
+                  ).length;
 
                   return (
                     <tr key={game.id_game} className="hover:bg-[#111827]/60 transition-colors">
                       {/* Problem Index & Balloon */}
                       <td className="p-3.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="px-2 py-0.5 rounded font-bold text-xs bg-[#111827] text-white border border-[#1e293b]">
                             Problem {letter}
                           </span>
                           <span className="font-bold text-white">{game.id_game}</span>
+                          {assignedCohortCount === 0 && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#090e1a] border border-amber-500/30 text-amber-400"
+                              title="Paket belum ditugaskan ke kelas mana pun (tersembunyi dari seluruh mahasiswa)"
+                            >
+                              Draft (0 Kelas)
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-400 mt-1">
                           {game.ref_pertemuan} • {balloonEmoji} Balon {letter}
@@ -858,11 +872,16 @@ export default function AdminContestControlTab({
                 {/* Hak Akses Kelas Checklist */}
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1.5 flex items-center justify-between">
-                    <span>Berikan Hak Akses ke Kelas:</span>
-                    <span className="text-[11px] text-blue-400 font-normal">
-                      {formAllowedCohorts.length} Kelas Dipilih
+                    <span>Berikan Hak Akses ke Kelas (Opsional):</span>
+                    <span className={`text-[11px] font-normal ${formAllowedCohorts.length === 0 ? 'text-slate-400' : 'text-blue-400'}`}>
+                      {formAllowedCohorts.length === 0
+                        ? 'Draft (0 Kelas — Belum Ditugaskan)'
+                        : `${formAllowedCohorts.length} Kelas Dipilih`}
                     </span>
                   </label>
+                  <p className="text-[11px] text-slate-400 mb-1.5">
+                    Biarkan tidak dicentang untuk menyimpan sebagai Draft (tersembunyi dari seluruh kelas hingga ditugaskan).
+                  </p>
                   <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-[#060a14] border border-[#1e293b] rounded-lg">
                     {activeCohorts.length === 0 ? (
                       <div className="p-2 text-slate-500 italic text-[11px] text-center">

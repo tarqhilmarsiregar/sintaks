@@ -200,30 +200,25 @@ ALTER TABLE public.cohort_game_access ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.submissions ENABLE ROW LEVEL SECURITY;
 
--- Read Access Policies
-CREATE POLICY "Allow public read access to cohorts" ON public.cohorts FOR SELECT USING (true);
-CREATE POLICY "Allow public read access to teams" ON public.teams FOR SELECT USING (true);
-CREATE POLICY "Allow public read access to users" ON public.users FOR SELECT USING (true);
-CREATE POLICY "Allow public read access to games" ON public.games FOR SELECT USING (true);
-CREATE POLICY "Allow public read access to cohort_game_access" ON public.cohort_game_access FOR SELECT USING (true);
-CREATE POLICY "Allow public read access to questions" ON public.questions FOR SELECT USING (true);
-CREATE POLICY "Allow public read access to submissions" ON public.submissions FOR SELECT USING (true);
+-- Service Role Exclusive Policies (Zero Direct Anon/PostgREST Exposure)
+-- Seluruh operasi database berjalan eksklusif melalui Next.js Server API (service_role).
+-- Kunci publik (anon/publishable) TIDAK BOLEH membaca/menulis tabel sensitif (users, questions, submissions) secara langsung.
+CREATE POLICY "Allow service_role all cohorts" ON public.cohorts FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service_role all teams" ON public.teams FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service_role all users" ON public.users FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service_role all games" ON public.games FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service_role all cohort_game_access" ON public.cohort_game_access FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service_role all questions" ON public.questions FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service_role all submissions" ON public.submissions FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- Service Role Full Read/Write Policies (Next.js Server API Routes & Admin Operations)
-CREATE POLICY "Allow service all cohorts" ON public.cohorts FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service all teams" ON public.teams FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service all users" ON public.users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service all games" ON public.games FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service all cohort_game_access" ON public.cohort_game_access FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service all questions" ON public.questions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service all submissions" ON public.submissions FOR ALL USING (true) WITH CHECK (true);
-
--- Explicit PostgreSQL Schema & Table Grants (Wajib untuk Supabase Postgres 15+ & Secret/Publishable Keys)
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT SELECT ON public.student_questions_view TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+-- Strict PostgreSQL Schema & Table Grants (Revoke anon/authenticated, Grant eksklusif service_role)
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+GRANT USAGE ON SCHEMA public TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT SELECT ON public.student_questions_view TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
 
 -- ==============================================================================
 -- 11. PRODUCTION SEED: ROOT ADMIN CREDENTIALS & STARTER COHORTS (CLEAN PRODUCTION)

@@ -26,17 +26,8 @@ import {
   Settings,
   FileSpreadsheet,
   KeyRound,
+  Pencil,
 } from 'lucide-react';
-
-const ALL_GAME_PACKAGES = [
-  { id: 'G1', label: 'Paket A (G1: Sintaks & Variabel)' },
-  { id: 'G2', label: 'Paket B (G2: Percabangan If-Else)' },
-  { id: 'G3', label: 'Paket C (G3: Perulangan Loop & Pola)' },
-  { id: 'G4', label: 'Paket D (G4: Array 1D/2D Manipulasi)' },
-  { id: 'G5', label: 'Paket E (G5: Fungsi & Rekursi)' },
-  { id: 'G6', label: 'Paket F (G6: Team Battle ICPC Arena)' },
-  { id: 'G7', label: 'Paket G (G7: Algoritma Game Theory & Sorting)' },
-];
 
 interface AdminStudentMonitorTabProps {
   users: User[];
@@ -58,6 +49,7 @@ interface AdminStudentMonitorTabProps {
   };
   onAdminResetPassword?: (nim: string) => Promise<{ success: boolean; message: string }>;
   onDeleteUser: (nim: string) => void;
+  onRefresh?: () => void;
 }
 
 export default function AdminStudentMonitorTab({
@@ -72,9 +64,16 @@ export default function AdminStudentMonitorTab({
   onBulkAddUsers,
   onAdminResetPassword,
   onDeleteUser,
+  onRefresh,
 }: AdminStudentMonitorTabProps) {
   const [classFilter, setClassFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Daftar Paket Soal 100% Murni Dinamis dari Database (Zero Dummy G1-G7)
+  const availableGamePackages = (games || []).map((g) => ({
+    id: g.id_game,
+    label: `${g.ref_pertemuan ? `${g.ref_pertemuan} — ` : ''}${g.judul_game}`,
+  }));
 
   // Cohorts & Dynamic Class State (sinkron dengan hidrasi Supabase)
   const [cohorts, setCohorts] = useState<Cohort[]>(() =>
@@ -91,15 +90,47 @@ export default function AdminStudentMonitorTab({
   const [showBulkImportModal, setShowBulkImportModal] = useState(false);
   const [isConfirmingPasswordReset, setIsConfirmingPasswordReset] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+
   const [showCohortModal, setShowCohortModal] = useState(false);
+  const [editingCohort, setEditingCohort] = useState<Cohort | null>(null);
   const [cohortNama, setCohortNama] = useState('');
   const [cohortKode, setCohortKode] = useState('');
   const [cohortSemester, setCohortSemester] = useState<'Ganjil' | 'Genap'>('Ganjil');
   const [cohortTahun, setCohortTahun] = useState('2025');
   const [cohortDeskripsi, setCohortDeskripsi] = useState('');
-  const [cohortAllowedGames, setCohortAllowedGames] = useState<string[]>(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7']);
+  const [cohortAllowedGames, setCohortAllowedGames] = useState<string[]>([]);
   const [cohortModalError, setCohortModalError] = useState('');
   const [cohortModalSuccess, setCohortModalSuccess] = useState('');
+
+  const openCreateCohortModal = () => {
+    setEditingCohort(null);
+    setCohortNama('');
+    setCohortKode('');
+    setCohortSemester('Ganjil');
+    setCohortTahun(String(new Date().getFullYear()));
+    setCohortDeskripsi('');
+    // Default kosong jika 0 game, atau pilih game yang benar-benar ada saja
+    setCohortAllowedGames([]);
+    setCohortModalError('');
+    setCohortModalSuccess('');
+    setShowCohortModal(true);
+  };
+
+  const openEditCohortModal = (cohort: Cohort) => {
+    setEditingCohort(cohort);
+    setCohortNama(cohort.nama_kelas);
+    setCohortKode(cohort.kode_kelas);
+    const parts = (cohort.periode || 'Ganjil 2025').trim().split(/\s+/);
+    setCohortSemester(parts[0]?.toLowerCase() === 'genap' ? 'Genap' : 'Ganjil');
+    setCohortTahun(parts[1] && /^\d{4}$/.test(parts[1]) ? parts[1] : '2025');
+    setCohortDeskripsi(cohort.deskripsi || '');
+    // Filter hanya game ID yang valid dan benar-benar ada di database saat ini
+    const existingGameIds = new Set(availableGamePackages.map((g) => g.id));
+    setCohortAllowedGames((cohort.allowed_game_ids || []).filter((id) => existingGameIds.has(id)));
+    setCohortModalError('');
+    setCohortModalSuccess('');
+    setShowCohortModal(true);
+  };
 
   // Managing Student Modal State (Nilai, XP & Reset Pertemuan)
   const [managingStudent, setManagingStudent] = useState<User | null>(null);
@@ -162,12 +193,35 @@ export default function AdminStudentMonitorTab({
       setCohortModalError('Tahun harus berupa 4 digit angka (contoh: 2025)!');
       return;
     }
-    if (cohortAllowedGames.length === 0) {
-      setCohortModalError('Pilih minimal 1 paket soal yang diizinkan untuk kelas ini!');
+
+    const periodeString = `${cohortSemester} ${cohortTahun.trim()}`;
+
+    if (editingCohort) {
+      const res = ArenaStore.updateCohort(editingCohort.id_cohort, {
+        nama_kelas: cohortNama.trim(),
+        kode_kelas: cohortKode.trim().toUpperCase(),
+        periode: periodeString,
+        deskripsi: cohortDeskripsi.trim() || undefined,
+        allowed_game_ids: cohortAllowedGames,
+      });
+
+      if (res.success && res.cohort) {
+        const updated = ArenaStore.getCohorts();
+        setCohorts(updated);
+        onRefresh?.();
+        setCohortModalSuccess(res.message);
+        setCohortModalError('');
+        setTimeout(() => {
+          setCohortModalSuccess('');
+          setEditingCohort(null);
+          setShowCohortModal(false);
+        }, 600);
+      } else {
+        setCohortModalError(res.message);
+      }
       return;
     }
 
-    const periodeString = `${cohortSemester} ${cohortTahun.trim()}`;
     const res = ArenaStore.createCohort({
       nama_kelas: cohortNama.trim(),
       kode_kelas: cohortKode.trim(),
@@ -180,15 +234,34 @@ export default function AdminStudentMonitorTab({
       const updated = ArenaStore.getCohorts();
       setCohorts(updated);
       setFormCohortId(res.cohort.id_cohort);
+      onRefresh?.();
       setCohortModalSuccess(res.message);
       setCohortModalError('');
       setCohortNama('');
       setCohortKode('');
       setCohortDeskripsi('');
+      setCohortAllowedGames([]);
       setTimeout(() => {
         setCohortModalSuccess('');
         setShowCohortModal(false);
-      }, 700);
+      }, 600);
+    } else {
+      setCohortModalError(res.message);
+    }
+  };
+
+  const handleDeleteEditingCohort = () => {
+    if (!editingCohort) return;
+    const res = ArenaStore.deleteCohort(editingCohort.id_cohort);
+    if (res.success) {
+      const updated = ArenaStore.getCohorts();
+      setCohorts(updated);
+      if (classFilter === editingCohort.id_cohort) {
+        setClassFilter('ALL');
+      }
+      onRefresh?.();
+      setEditingCohort(null);
+      setShowCohortModal(false);
     } else {
       setCohortModalError(res.message);
     }
@@ -202,7 +275,7 @@ export default function AdminStudentMonitorTab({
     setManageModalSuccess('');
 
     const initialGrades: Record<string, { nilai_akademik: number; skor_xp: number; hasSub: boolean; enabled: boolean }> = {};
-    ALL_GAME_PACKAGES.forEach(pkg => {
+    availableGamePackages.forEach(pkg => {
       const sub = submissions.find(s => s.nim === student.nim && s.id_game === pkg.id);
       if (sub) {
         initialGrades[pkg.id] = {
@@ -380,11 +453,7 @@ export default function AdminStudentMonitorTab({
         {/* Action Buttons: Buat Kelas, Import CSV/Excel & Tambah Akun Baru */}
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs shrink-0">
           <button
-            onClick={() => {
-              setCohortModalError('');
-              setCohortModalSuccess('');
-              setShowCohortModal(true);
-            }}
+            onClick={openCreateCohortModal}
             className="px-3.5 py-2 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] text-slate-200 hover:text-white font-bold shadow-sm transition-colors flex items-center gap-2"
           >
             <Layers className="w-4 h-4 text-blue-400" />
@@ -433,18 +502,38 @@ export default function AdminStudentMonitorTab({
             const isSelected = classFilter === c.id_cohort;
 
             return (
-              <button
+              <div
                 key={c.id_cohort}
-                onClick={() => setClassFilter(c.id_cohort)}
-                className={`px-3 py-1 rounded text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`inline-flex items-center rounded transition-all ${
                   isSelected
                     ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
+                    : 'text-slate-400 hover:text-white hover:bg-[#111827]'
                 }`}
               >
-                <span>{c.nama_kelas}</span>
-                <span className="text-[10px] opacity-80">({count})</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setClassFilter(c.id_cohort)}
+                  className="pl-3 pr-1.5 py-1 text-xs font-bold flex items-center gap-1.5"
+                >
+                  <span>{c.nama_kelas}</span>
+                  <span className="text-[10px] opacity-80">({count})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditCohortModal(c);
+                  }}
+                  title={`Edit kelas ${c.nama_kelas} & hak akses paket soal`}
+                  className={`pr-2 pl-1 py-1 rounded-r transition-colors ${
+                    isSelected
+                      ? 'text-blue-100 hover:text-white'
+                      : 'text-slate-500 hover:text-blue-400'
+                  }`}
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -761,11 +850,7 @@ export default function AdminStudentMonitorTab({
                       </label>
                       <button
                         type="button"
-                        onClick={() => {
-                          setCohortModalError('');
-                          setCohortModalSuccess('');
-                          setShowCohortModal(true);
-                        }}
+                        onClick={openCreateCohortModal}
                         className="text-xs text-blue-400 hover:text-blue-300 font-semibold underline flex items-center gap-1"
                       >
                         + Buat Kelas Baru
@@ -912,12 +997,15 @@ export default function AdminStudentMonitorTab({
               <div className="flex items-center gap-2">
                 <Layers className="w-5 h-5 text-blue-400" />
                 <h3 className="text-base sm:text-lg font-bold text-white">
-                  Buat Kelas &amp; Kohort Pembelajaran Baru
+                  {editingCohort ? `Edit Kelas: ${editingCohort.nama_kelas}` : 'Buat Kelas & Kohort Pembelajaran Baru'}
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCohortModal(false)}
+                onClick={() => {
+                  setEditingCohort(null);
+                  setShowCohortModal(false);
+                }}
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-[#151f33] transition-colors"
                 aria-label="Tutup modal"
               >
@@ -1002,63 +1090,71 @@ export default function AdminStudentMonitorTab({
                 />
               </div>
 
-              {/* Resource Access Matrix Checkbox (Hak Akses Paket Soal) */}
+              {/* Resource Access Matrix Checkbox (100% Murni Dinamis dari Paket Soal Terdaftar) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-slate-300 font-semibold">
-                    Hak Akses Paket Soal (Resources) *
+                    Hak Akses Paket Soal (Opsional)
                   </label>
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setCohortAllowedGames(ALL_GAME_PACKAGES.map(g => g.id))}
-                      className="text-blue-400 hover:text-blue-300 underline"
-                    >
-                      Pilih Semua
-                    </button>
-                    <span className="text-slate-600">|</span>
-                    <button
-                      type="button"
-                      onClick={() => setCohortAllowedGames([])}
-                      className="text-slate-400 hover:text-white underline"
-                    >
-                      Kosongkan
-                    </button>
-                  </div>
+                  {availableGamePackages.length > 0 && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setCohortAllowedGames(availableGamePackages.map(g => g.id))}
+                        className="text-blue-400 hover:text-blue-300 underline"
+                      >
+                        Pilih Semua
+                      </button>
+                      <span className="text-slate-600">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setCohortAllowedGames([])}
+                        className="text-slate-400 hover:text-white underline"
+                      >
+                        Kosongkan
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-1.5 bg-[#080d18] border border-[#1a2333] rounded-xl p-3 max-h-48 overflow-y-auto">
-                  {ALL_GAME_PACKAGES.map((pkg) => {
-                    const isChecked = cohortAllowedGames.includes(pkg.id);
-                    return (
-                      <label
-                        key={pkg.id}
-                        className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors border ${
-                          isChecked
-                            ? 'bg-blue-950/30 border-blue-500/30 text-white'
-                            : 'bg-transparent border-transparent text-slate-400 hover:bg-[#111827]'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setCohortAllowedGames([...cohortAllowedGames, pkg.id]);
-                            } else {
-                              setCohortAllowedGames(cohortAllowedGames.filter(id => id !== pkg.id));
-                            }
-                          }}
-                          className="rounded border-[#1e293b] text-blue-600 focus:ring-0 bg-[#111827] w-4 h-4"
-                        />
-                        <span className="font-bold text-xs">{pkg.id}</span>
-                        <span className="text-xs truncate">{pkg.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                {availableGamePackages.length === 0 ? (
+                  <div className="bg-[#080d18] border border-[#1a2333] rounded-xl p-3.5 text-slate-400 text-xs leading-relaxed">
+                    Belum ada paket soal / kontes yang dibuat di sistem. Anda dapat langsung menyimpan kelas ini sekarang, lalu menetapkan hak akses paket soal kapan saja melalui tombol <strong className="text-slate-200">Edit Kelas</strong> setelah membuat paket di menu Manajemen Kontes.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 bg-[#080d18] border border-[#1a2333] rounded-xl p-3 max-h-48 overflow-y-auto">
+                    {availableGamePackages.map((pkg) => {
+                      const isChecked = cohortAllowedGames.includes(pkg.id);
+                      return (
+                        <label
+                          key={pkg.id}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors border ${
+                            isChecked
+                              ? 'bg-blue-950/30 border-blue-500/30 text-white'
+                              : 'bg-transparent border-transparent text-slate-400 hover:bg-[#111827]'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCohortAllowedGames([...cohortAllowedGames, pkg.id]);
+                              } else {
+                                setCohortAllowedGames(cohortAllowedGames.filter(id => id !== pkg.id));
+                              }
+                            }}
+                            className="rounded border-[#1e293b] text-blue-600 focus:ring-0 bg-[#111827] w-4 h-4"
+                          />
+                          <span className="font-bold text-xs">{pkg.id}</span>
+                          <span className="text-xs truncate">{pkg.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Mahasiswa di kelas ini hanya dapat mengakses paket soal yang dicentang ({cohortAllowedGames.length} paket dipilih).
+                  Mahasiswa di kelas ini hanya dapat melihat dan mengakses paket soal yang dicentang ({cohortAllowedGames.length} paket dipilih).
                 </p>
               </div>
 
@@ -1077,20 +1173,38 @@ export default function AdminStudentMonitorTab({
               )}
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e293b]">
-                <button
-                  type="button"
-                  onClick={() => setShowCohortModal(false)}
-                  className="px-4 py-2 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] text-slate-300 font-bold transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-sm"
-                >
-                  Simpan Kelas Baru
-                </button>
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#1e293b]">
+                <div>
+                  {editingCohort && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteEditingCohort}
+                      className="px-3 py-2 rounded-lg bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/30 text-rose-300 hover:text-white font-bold transition-colors flex items-center gap-1.5"
+                      title="Hapus kelas jika tidak ada mahasiswa terdaftar"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus Kelas</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCohort(null);
+                      setShowCohortModal(false);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] text-slate-300 font-bold transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors shadow-sm"
+                  >
+                    {editingCohort ? 'Simpan Perubahan Kelas' : 'Simpan Kelas Baru'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1132,7 +1246,7 @@ export default function AdminStudentMonitorTab({
                     <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
                       <span>@{managingStudent.codename}</span>
                       <span>&bull;</span>
-                      <span>Kelas {managingStudent.klub_hari}</span>
+                      <span>{ArenaStore.resolveUserCohortName(managingStudent, cohorts)}</span>
                       {managingStudent.periode && (
                         <>
                           <span>&bull;</span>
@@ -1197,7 +1311,7 @@ export default function AdminStudentMonitorTab({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-slate-300 font-bold">
-                      Nilai Akademik &amp; Kuis per Pertemuan (G1 s.d. G7)
+                      Nilai Akademik &amp; Kuis per Pertemuan
                     </label>
                     <div className="text-[11px] text-slate-400">
                       Nilai Rata-rata Terkini:{' '}
@@ -1209,6 +1323,11 @@ export default function AdminStudentMonitorTab({
                   </div>
 
                   <div className="bg-[#080d18] border border-[#1a2333] rounded-xl overflow-hidden">
+                    {availableGamePackages.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400 font-mono">
+                        Belum ada paket soal / kontes yang terdaftar di sistem.
+                      </div>
+                    ) : (
                     <table className="w-full text-left text-xs font-mono">
                       <thead className="bg-[#111827] text-slate-400 border-b border-[#1e293b]">
                         <tr>
@@ -1219,7 +1338,7 @@ export default function AdminStudentMonitorTab({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#1e293b]">
-                        {ALL_GAME_PACKAGES.map((pkg) => {
+                        {availableGamePackages.map((pkg) => {
                           const gradeData = editGrades[pkg.id] || { nilai_akademik: 0, skor_xp: 0, hasSub: false, enabled: false };
                           const isActive = gradeData.hasSub || gradeData.enabled;
 
@@ -1230,7 +1349,7 @@ export default function AdminStudentMonitorTab({
                                 <div className="font-bold text-white flex items-center gap-1.5">
                                   <span>{pkg.id}</span>
                                   <span className="text-slate-400 font-normal text-[11px] truncate max-w-[180px] sm:max-w-[220px]">
-                                    {pkg.label.replace(/^Paket [A-G] \(G[1-7]:\s*/, '').replace(/\)$/, '')}
+                                    {pkg.label}
                                   </span>
                                 </div>
                                 <div className="text-[10px] mt-0.5">
@@ -1332,6 +1451,7 @@ export default function AdminStudentMonitorTab({
                         })}
                       </tbody>
                     </table>
+                    )}
                   </div>
                 </div>
 
@@ -1452,7 +1572,7 @@ export default function AdminStudentMonitorTab({
                   <div>
                     <span className="text-slate-500 block">Kelas / Kohort</span>
                     <span className="font-bold text-slate-200">
-                      Kelas {deletingStudent.klub_hari}
+                      {ArenaStore.resolveUserCohortName(deletingStudent, cohorts)}
                     </span>
                   </div>
                 </div>

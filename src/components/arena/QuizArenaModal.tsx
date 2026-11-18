@@ -37,34 +37,76 @@ export default function QuizArenaModal({
   const [antiCheatWarning, setAntiCheatWarning] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // References for timers
+  // References for timers & race-free latest state
   const totalTimerRef = useRef<NodeJS.Timeout | null>(null);
   const questionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const submissionRef = useRef<Submission | null>(null);
+  const isFinishingRef = useRef(false);
+  const handleAnswerRef = useRef<(isTimeout?: boolean) => Promise<void>>(async () => {});
 
-  // 1. Initialize Sesi Submisi & Questions
+  useEffect(() => {
+    submissionRef.current = submission;
+  }, [submission]);
+
+  // 1. Initialize Sesi Submisi & Questions (Sinkron dengan Server Supabase sebelum Soal #1)
   useEffect(() => {
     if (!isOpen) return;
 
-    const sub = ArenaStore.startQuizSession(currentUser, game);
-    setSubmission(sub);
+    let cancelled = false;
+    isFinishingRef.current = false;
 
-    // Ambil soal dengan urutan deterministik unik per peserta (Anti-Cheat Shuffling)
-    const gameQs = ArenaStore.getQuestionsForUser(currentUser, game.id_game, sub);
-    setQuestions(gameQs);
+    const applySessionState = (sub: Submission) => {
+      if (cancelled) return;
+      submissionRef.current = sub;
+      setSubmission(sub);
 
-    // Hitung sisa waktu total berdasarkan timestamp_mulai
-    const elapsedSeconds = Math.floor(
-      (Date.now() - new Date(sub.timestamp_mulai).getTime()) / 1000
-    );
-    const maxTotalSec = game.durasi_total_menit * 60;
-    const remainingTotal = Math.max(0, maxTotalSec - elapsedSeconds);
-    setTotalSecondsLeft(remainingTotal);
+      // Ambil soal dengan urutan deterministik unik per peserta (Anti-Cheat Shuffling)
+      const gameQs = ArenaStore.getQuestionsForUser(currentUser, game.id_game, sub);
+      setQuestions(gameQs);
 
-    // Cari soal pertama yang belum dijawab
-    const answeredIds = new Set(sub.detail_jawaban_json.map(d => d.id_soal));
-    const firstUnanswered = gameQs.findIndex(q => !answeredIds.has(q.id_soal));
-    setCurrentQIndex(firstUnanswered !== -1 ? firstUnanswered : 0);
-    setQuestionSecondsLeft(game.durasi_per_soal_detik);
+      // Hitung sisa waktu total berdasarkan timestamp_mulai
+      const elapsedSeconds = Math.floor(
+        (Date.now() - new Date(sub.timestamp_mulai).getTime()) / 1000
+      );
+      const maxTotalSec = game.durasi_total_menit * 60;
+      const remainingTotal = Math.max(0, maxTotalSec - elapsedSeconds);
+      setTotalSecondsLeft(remainingTotal);
+
+      // Cari soal pertama yang belum dijawab
+      const answeredIds = new Set(sub.detail_jawaban_json.map(d => d.id_soal));
+      const firstUnanswered = gameQs.findIndex(q => !answeredIds.has(q.id_soal));
+      setCurrentQIndex(firstUnanswered !== -1 ? firstUnanswered : 0);
+      setQuestionSecondsLeft(game.durasi_per_soal_detik);
+    };
+
+    const localSub = ArenaStore.startQuizSession(currentUser, game);
+    applySessionState(localSub);
+
+    // Pastikan sesi ACTIVE tercatat otoritatif di Supabase sebelum mahasiswa menjawab soal pertama
+    fetch('/api/submissions/quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        action: 'start',
+        idGame: game.id_game,
+        submissionId: localSub.id_submission,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.mode === 'supabase' && data?.submission) {
+          ArenaStore.syncLocalSubmissionOnly(data.submission);
+          applySessionState(data.submission);
+        }
+      })
+      .catch(() => {
+        // Mode offline / lokal tetap berjalan mulus dengan localSub
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, game, currentUser]);
 
   // 2. Anti-Cheat Visibility API Detection
@@ -72,29 +114,41 @@ export default function QuizArenaModal({
     if (!isOpen || !submission || submission.status_sesi !== 'ACTIVE') return;
 
     const handleVisibilityChange = async () => {
-      if (document.hidden) {
-        // Optimistic local update
-        const updated = ArenaStore.recordTabSwitch(submission.id_submission);
-        if (updated) {
-          setSubmission(updated);
-          setAntiCheatWarning(
-            `⚠️ PERINGATAN CURANG: Terdeteksi pindah tab! Nilai Akhir & Skor XP dipotong -5.`
-          );
-          setTimeout(() => setAntiCheatWarning(null), 6000);
-        }
+      const activeSub = submissionRef.current;
+      if (document.hidden && activeSub && activeSub.status_sesi === 'ACTIVE') {
+        setAntiCheatWarning(
+          `⚠️ PERINGATAN CURANG: Terdeteksi pindah tab! Nilai Akhir & Skor XP dipotong -5.`
+        );
+        setTimeout(() => setAntiCheatWarning(null), 6000);
 
-        // Server-side audit sync
+        // Server-side audit sync terlebih dahulu di mode Supabase agar tidak menimpa DB dengan cache lokal
         try {
-          await fetch('/api/submissions/quiz', {
+          const res = await fetch('/api/submissions/quiz', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
             body: JSON.stringify({
               action: 'tab-switch',
-              submissionId: submission.id_submission,
+              submissionId: activeSub.id_submission,
             }),
           });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.mode === 'supabase' && data?.submission) {
+              ArenaStore.syncLocalSubmissionOnly(data.submission);
+              submissionRef.current = data.submission;
+              setSubmission(data.submission);
+              return;
+            }
+          }
         } catch {
           // Graceful offline fallback
+        }
+
+        const updated = ArenaStore.recordTabSwitch(activeSub.id_submission);
+        if (updated) {
+          submissionRef.current = updated;
+          setSubmission(updated);
         }
       }
     };
@@ -103,38 +157,53 @@ export default function QuizArenaModal({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isOpen, submission]);
+  }, [isOpen, submission?.id_submission, submission?.status_sesi]);
 
-  // 3. Selesaikan Game Otomatis (Auto-Finish)
-  const completeGame = useCallback(async () => {
-    if (!submission) return;
+  // 3. Selesaikan Game Otomatis (Auto-Finish — Server-Authoritative di Mode Supabase)
+  const completeGame = useCallback(async (overrideSub?: Submission) => {
+    const targetSub = overrideSub || submissionRef.current;
+    if (!targetSub || isFinishingRef.current) return;
+    isFinishingRef.current = true;
 
     // Bersihkan timers
     if (totalTimerRef.current) clearInterval(totalTimerRef.current);
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
 
-    let finalSub = ArenaStore.finishQuizSession(submission.id_submission);
+    let finalSub: Submission | null = null;
 
-    // Call server finish validation
+    // 1. Prioritaskan penilaian otoritatif server Supabase (MENCEGAH skor tertimpa 0 oleh cache lokal!)
     try {
       const res = await fetch('/api/submissions/quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'finish',
-          submissionId: submission.id_submission,
+          submissionId: targetSub.id_submission,
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.submission) {
-          finalSub = { ...finalSub, ...data.submission };
+        if (data?.mode === 'supabase' && data?.submission) {
+          finalSub = data.submission;
+          ArenaStore.syncLocalSubmissionOnly(data.submission);
+          // Tarik ulang XP & Level terbaru dari Supabase tanpa memicu write-through balik
+          await ArenaStore.hydrateFromServer({
+            role: currentUser.role,
+            nim: currentUser.nim,
+          });
         }
       }
     } catch {
-      // Graceful offline fallback
+      // Graceful offline fallback di bawah
     }
 
+    // 2. Fallback lokal hanya jika mode lokal/offline (bukan Supabase live)
+    if (!finalSub) {
+      finalSub = ArenaStore.finishQuizSession(targetSub.id_submission);
+    }
+
+    submissionRef.current = finalSub;
     setSubmission(finalSub);
 
     // Confetti effect jika nilai >= batas kelulusan
@@ -147,7 +216,7 @@ export default function QuizArenaModal({
     }
 
     onFinishGame(finalSub);
-  }, [submission, game, onFinishGame]);
+  }, [game, currentUser, onFinishGame]);
 
   // 4. Timer 1: Total Game Timer
   useEffect(() => {
@@ -167,9 +236,9 @@ export default function QuizArenaModal({
     return () => {
       if (totalTimerRef.current) clearInterval(totalTimerRef.current);
     };
-  }, [isOpen, submission, completeGame]);
+  }, [isOpen, submission?.id_submission, submission?.status_sesi, completeGame]);
 
-  // 5. Timer 2: Anti-AI Per-Soal Timer
+  // 5. Timer 2: Anti-AI Per-Soal Timer (menggunakan handleAnswerRef agar bebas stale closure)
   useEffect(() => {
     if (!isOpen || !submission || submission.status_sesi !== 'ACTIVE') return;
 
@@ -177,7 +246,7 @@ export default function QuizArenaModal({
       setQuestionSecondsLeft(prev => {
         if (prev <= 1) {
           // Timeout tercapai -> Kunci soal saat ini & lompat
-          handleAnswer(true);
+          handleAnswerRef.current(true);
           return 0;
         }
         return prev - 1;
@@ -187,7 +256,7 @@ export default function QuizArenaModal({
     return () => {
       if (questionTimerRef.current) clearInterval(questionTimerRef.current);
     };
-  }, [isOpen, submission, currentQIndex, questions]);
+  }, [isOpen, submission?.id_submission, submission?.status_sesi, currentQIndex, questions.length]);
 
   // Reset timer per-soal saat berganti soal
   useEffect(() => {
@@ -197,27 +266,29 @@ export default function QuizArenaModal({
 
   // 6. Handle Kirim Jawaban Soal (One-Shot Lock & Auto-Jump)
   const handleAnswer = async (isTimeout: boolean = false) => {
-    if (!submission || questions.length === 0 || isSubmitting) return;
+    const activeSub = submissionRef.current;
+    if (!activeSub || questions.length === 0 || isSubmitting || isFinishingRef.current) return;
 
     const currentQ = questions[currentQIndex];
     if (!currentQ) return;
 
     // Pastikan belum pernah dijawab
-    const isAnswered = submission.detail_jawaban_json.some(d => d.id_soal === currentQ.id_soal);
+    const isAnswered = activeSub.detail_jawaban_json.some(d => d.id_soal === currentQ.id_soal);
     if (isAnswered) return;
 
     setIsSubmitting(true);
     const hasOpenedHint = !!openedHints[currentQ.id_soal];
     const jawabanValue = isTimeout ? '(TIMEOUT)' : selectedOption;
 
-    let updatedSub = submission;
+    let updatedSub = activeSub;
     try {
       const res = await fetch('/api/submissions/quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'answer',
-          submissionId: submission.id_submission,
+          submissionId: activeSub.id_submission,
           idSoal: currentQ.id_soal,
           jawaban: jawabanValue,
           isTimeout,
@@ -228,11 +299,14 @@ export default function QuizArenaModal({
 
       if (res.ok) {
         const data = await res.json();
-        if (data.submission) {
+        if (data?.mode === 'supabase' && data?.submission) {
+          updatedSub = data.submission;
+          ArenaStore.syncLocalSubmissionOnly(data.submission);
+        } else if (data?.submission) {
           updatedSub = data.submission;
         } else {
           const localRes = ArenaStore.answerQuestion({
-            submissionId: submission.id_submission,
+            submissionId: activeSub.id_submission,
             idSoal: currentQ.id_soal,
             jawaban: jawabanValue,
             isTimeout,
@@ -243,7 +317,7 @@ export default function QuizArenaModal({
         }
       } else {
         const localRes = ArenaStore.answerQuestion({
-          submissionId: submission.id_submission,
+          submissionId: activeSub.id_submission,
           idSoal: currentQ.id_soal,
           jawaban: jawabanValue,
           isTimeout,
@@ -254,7 +328,7 @@ export default function QuizArenaModal({
       }
     } catch {
       const localRes = ArenaStore.answerQuestion({
-        submissionId: submission.id_submission,
+        submissionId: activeSub.id_submission,
         idSoal: currentQ.id_soal,
         jawaban: jawabanValue,
         isTimeout,
@@ -264,6 +338,7 @@ export default function QuizArenaModal({
       updatedSub = localRes.submission;
     }
 
+    submissionRef.current = updatedSub;
     setSubmission(updatedSub);
     setIsSubmitting(false);
 
@@ -275,14 +350,26 @@ export default function QuizArenaModal({
       // Ada soal lain yang belum dijawab -> Lompat otomatis
       setCurrentQIndex(nextUnanswered);
     } else {
-      // Seluruh soal selesai terjawab -> Auto-Finish sesi
-      completeGame();
+      // Seluruh soal selesai terjawab -> Auto-Finish sesi dengan state terbaru
+      completeGame(updatedSub);
     }
   };
 
+  handleAnswerRef.current = handleAnswer;
+
+  // Seluruh hooks wajib dipanggil sebelum conditional return (React Rules of Hooks)
+  const currentQ = questions[currentQIndex];
+
+  // Opsi pilihan ganda diacak deterministik per peserta & butir soal
+  const parsedOptions = useMemo(() => {
+    if (!currentQ?.opsi_jawaban) return [];
+    const raw = currentQ.opsi_jawaban.split('|');
+    if (raw.length <= 1 || !currentUser) return raw;
+    return seededShuffle(raw, `${currentUser.nim}_${currentQ.id_soal}_OPTIONS`);
+  }, [currentQ, currentUser]);
+
   if (!isOpen || !submission) return null;
 
-  const currentQ = questions[currentQIndex];
   const isCurrentAnswered = currentQ
     ? submission.detail_jawaban_json.some(d => d.id_soal === currentQ.id_soal)
     : false;
@@ -293,14 +380,6 @@ export default function QuizArenaModal({
     const s = secs % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
-
-  // Opsi pilihan ganda diacak deterministik per peserta & butir soal
-  const parsedOptions = useMemo(() => {
-    if (!currentQ?.opsi_jawaban) return [];
-    const raw = currentQ.opsi_jawaban.split('|');
-    if (raw.length <= 1 || !currentUser) return raw;
-    return seededShuffle(raw, `${currentUser.nim}_${currentQ.id_soal}_OPTIONS`);
-  }, [currentQ, currentUser]);
 
   return (
     <div

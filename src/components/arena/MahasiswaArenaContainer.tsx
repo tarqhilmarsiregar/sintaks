@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Game, Question, Submission, User, Team, LeaderboardPlayer, KlubHari } from '@/types/arena';
+import { Game, Question, Submission, User, Team, LeaderboardPlayer, KlubHari, Cohort } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
+import { CheckCircle2 } from 'lucide-react';
 
 import TopNavbar from '@/components/arena/TopNavbar';
 import StudentSidebar, { StudentActiveMenu } from '@/components/arena/StudentSidebar';
@@ -31,6 +32,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [games, setGames] = useState<Game[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -40,19 +42,24 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   const [leaderboardPlayers, setLeaderboardPlayers] = useState<LeaderboardPlayer[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Modals
+  // Modals & Notifications
   const [activeQuizGame, setActiveQuizGame] = useState<Game | null>(null);
   const [editorialTarget, setEditorialTarget] = useState<{ game: Game; submission: Submission } | null>(null);
   const [activeCodingProblem, setActiveCodingProblem] = useState<{ problem: Problem; sourceGame?: Game | null } | null>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
+  const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const onboardingCompletedRef = useRef(false);
 
-  // 1. Data Loader
+  // 1. Data Loader (Dengan Isolasi Paket Soal Ketat Per Kohort)
   const loadAllData = useCallback((user: User) => {
     setCurrentUser(user);
 
     // Cek apakah mahasiswa wajib onboarding (ganti password perdana)
-    if (user.role === 'PESERTA') {
+    // Jika onboarding baru saja diselesaikan pada sesi ini, jangan buka ulang modal akibat hidrasi lambat
+    if (onboardingCompletedRef.current) {
+      setIsOnboardingModalOpen(false);
+    } else if (user.role === 'PESERTA') {
       const hasChangedPassword = user.is_first_login === false || Boolean(user.password_changed_at);
       const isExplicitDefaultPass = Boolean(user.password) && user.password === user.nim;
       const needsOnboard = !hasChangedPassword || isExplicitDefaultPass;
@@ -61,8 +68,13 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
       setIsOnboardingModalOpen(false);
     }
 
-    const g = ArenaStore.getGames();
-    setGames(g);
+    const c = ArenaStore.getCohorts();
+    setCohorts(c);
+
+    // Isolasi ketat: hanya tampilkan paket soal yang diizinkan bagi kohort mahasiswa ini
+    const allGames = ArenaStore.getGames();
+    const visibleGames = ArenaStore.getGamesForUser(user, allGames, c);
+    setGames(visibleGames);
 
     const q = ArenaStore.getQuestions();
     setQuestions(q);
@@ -73,28 +85,64 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
     const t = ArenaStore.getTeams();
     setTeams(t);
 
-    const filter = (user?.klub_hari && user.klub_hari !== 'ALL') ? user.klub_hari : 'KAMIS';
-    setLeaderboardFilter(filter);
-    setLeaderboardPlayers(ArenaStore.getLeaderboardPlayers(filter));
+    const legacyFilter: KlubHari = (user?.klub_hari && user.klub_hari !== 'ALL') ? user.klub_hari : 'ALL';
+    setLeaderboardFilter(legacyFilter);
+    const dynamicLeaderboardKey = user?.id_cohort || legacyFilter;
+    setLeaderboardPlayers(ArenaStore.getLeaderboardPlayers(dynamicLeaderboardKey));
   }, []);
 
-  // Route Guard: Pastikan sesi aktif + Hidrasi Live Supabase
+  // Route Guard: Pastikan sesi aktif + Hidrasi Live Supabase (dengan pemulihan otomatis dari HttpOnly cookie)
   useEffect(() => {
-    const user = ArenaStore.getCurrentUser();
-    if (!user) {
-      router.replace('/login');
-      return;
-    }
-    loadAllData(user);
-    setIsCheckingAuth(false);
+    let cancelled = false;
 
-    // Sinkronisasi state terbaru dari Supabase PostgreSQL (non-blocking)
-    ArenaStore.hydrateFromServer({ role: user.role, nim: user.nim }).then((res) => {
-      if (res.synced) {
-        const freshUser = ArenaStore.getCurrentUser() || user;
-        loadAllData(freshUser);
+    const initStudentSession = async () => {
+      let user = ArenaStore.getCurrentUser();
+
+      // Jika localStorage kosong namun HttpOnly cookie valid (misal akun baru / tab baru), pulihkan dari server
+      if (!user) {
+        try {
+          const sessionRes = await fetch('/api/auth/session', {
+            cache: 'no-store',
+            credentials: 'same-origin',
+          });
+          if (sessionRes.ok) {
+            const sessionData = await sessionRes.json();
+            if (sessionData?.authenticated && sessionData?.session) {
+              await ArenaStore.hydrateFromServer({
+                role: sessionData.session.role,
+                nim: sessionData.session.nim,
+              });
+              user = ArenaStore.getCurrentUser();
+            }
+          }
+        } catch {
+          // Abaikan error jaringan, lanjut redirect ke login
+        }
       }
-    });
+
+      if (cancelled) return;
+
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      loadAllData(user);
+      setIsCheckingAuth(false);
+
+      // Sinkronisasi state terbaru dari Supabase PostgreSQL (non-blocking)
+      ArenaStore.hydrateFromServer({ role: user.role, nim: user.nim }).then((res) => {
+        if (!cancelled && res.synced) {
+          const freshUser = ArenaStore.getCurrentUser() || user;
+          loadAllData(freshUser);
+        }
+      });
+    };
+
+    initStudentSession();
+    return () => {
+      cancelled = true;
+    };
   }, [router, loadAllData]);
 
   // Handle Dynamic URL Navigation
@@ -118,9 +166,9 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   };
 
   // Handle Logout
-  const handleLogout = () => {
-    ArenaStore.logout();
-    router.push('/login');
+  const handleLogout = async () => {
+    await ArenaStore.logout();
+    window.location.assign('/login');
   };
 
   // Handle Leaderboard Filter Change
@@ -140,12 +188,14 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
     return ok;
   };
 
-  // Handle Onboarding Complete (Password Change Success)
+  // Handle Onboarding Complete (Password Change Success -> Tutup Modal Seketika)
   const handleOnboardingComplete = (updatedUser: User) => {
-    setCurrentUser(updatedUser);
+    onboardingCompletedRef.current = true;
     setIsOnboardingModalOpen(false);
-    const user = ArenaStore.getCurrentUser();
-    if (user) loadAllData(user);
+    setCurrentUser(updatedUser);
+    loadAllData(updatedUser);
+    setStatusBanner('Kata sandi baru berhasil disimpan. Selamat datang di Arena Pembelajaran!');
+    setTimeout(() => setStatusBanner(null), 5000);
   };
 
   // Handle Unlock PIN for Team Game
@@ -234,12 +284,20 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
 
         {/* B. AREA KONTEN UTAMA: Offsetting Fixed Sidebar secara Presisi */}
         <main className="flex-1 min-w-0 md:ml-72 lg:ml-80 xl:ml-[328px] px-4 sm:px-6 lg:px-8 py-6 space-y-6 overflow-x-hidden">
+            {statusBanner && (
+              <div className="p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/35 text-emerald-300 text-xs font-mono flex items-center gap-2.5 shadow-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{statusBanner}</span>
+              </div>
+            )}
+
             {/* Menu 1: /mahasiswa/dashboard */}
             {activeMenu === 'dashboard' && (
               <DashboardOverviewView
                 stats={userStats}
                 currentUser={currentUser}
                 games={games}
+                cohorts={cohorts}
                 submissions={submissions}
                 leaderboardPlayers={leaderboardPlayers}
                 teams={teams}

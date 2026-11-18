@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { ScoreboardParticipant } from '@/types';
-import { Trophy, Award, Search, Sparkles } from 'lucide-react';
+import { Trophy, Award, Search, Zap } from 'lucide-react';
 
 interface ScoreboardTableProps {
   participants: ScoreboardParticipant[];
@@ -125,7 +125,7 @@ export default function ScoreboardTable({
                     <div className="font-semibold text-slate-100 flex items-center gap-1.5">
                       <span>{p.full_name}</span>
                       {p.rank === 1 && (
-                        <Sparkles className="w-3.5 h-3.5 text-amber-400 inline" />
+                        <Zap className="w-3.5 h-3.5 text-amber-400 inline" />
                       )}
                     </div>
                     <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">

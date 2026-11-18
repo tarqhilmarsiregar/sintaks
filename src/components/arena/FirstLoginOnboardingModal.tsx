@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
 import ModalPortal from '@/components/common/ModalPortal';
@@ -29,14 +29,25 @@ export default function FirstLoginOnboardingModal({
   currentUser,
   onComplete,
 }: FirstLoginOnboardingModalProps) {
-  if (!isOpen || !currentUser) return null;
-
+  // Seluruh hooks wajib dipanggil sebelum conditional return (React Rules of Hooks)
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [codename, setCodename] = useState(currentUser.codename || '');
+  const [codename, setCodename] = useState(currentUser?.codename || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && currentUser) {
+      setCodename(currentUser.codename || '');
+      setNewPassword('');
+      setConfirmPassword('');
+      setErrorMessage(null);
+      setIsSubmitting(false);
+    }
+  }, [isOpen, currentUser?.nim, currentUser?.codename]);
+
+  if (!isOpen || !currentUser) return null;
 
   // Validasi Kata Sandi Real-time (Industrial Checklist)
   const isLengthValid = newPassword.trim().length >= 6;
@@ -74,6 +85,7 @@ export default function FirstLoginOnboardingModal({
         const res = await fetch('/api/auth/password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
           body: JSON.stringify({
             action: 'onboarding',
             nim: currentUser.nim,
@@ -87,7 +99,6 @@ export default function FirstLoginOnboardingModal({
         if (data?.mode === 'supabase') {
           if (!res.ok || !data.success) {
             setErrorMessage(data.error || 'Gagal menyimpan pembaruan akun ke database.');
-            setIsSubmitting(false);
             return;
           }
           syncedViaSupabase = true;
@@ -98,12 +109,13 @@ export default function FirstLoginOnboardingModal({
             is_first_login: false,
             password_changed_at: data.user?.password_changed_at || new Date().toISOString(),
           };
-          ArenaStore.setCurrentUser(updatedUser);
+          // Perbarui cache lokal (currentUser + users) secara sinkron bebas race-condition
+          ArenaStore.markLocalUserOnboarded(updatedUser);
           onComplete(updatedUser);
           return;
         }
       } catch {
-        // Fallback ke local store
+        // Fallback ke local store bila offline
       }
 
       // 2. Local ArenaStore persistence (mode lokal / offline)
@@ -117,7 +129,6 @@ export default function FirstLoginOnboardingModal({
 
         if (!localRes.success || !localRes.user) {
           setErrorMessage(localRes.message || 'Gagal menyimpan pembaruan akun.');
-          setIsSubmitting(false);
           return;
         }
 
@@ -125,6 +136,7 @@ export default function FirstLoginOnboardingModal({
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Terjadi gangguan jaringan saat memperbarui akun.');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -158,7 +170,7 @@ export default function FirstLoginOnboardingModal({
                 <div>
                   <div className="font-bold text-white text-sm">{currentUser.nama_lengkap}</div>
                   <div className="text-slate-400 text-[11px] mt-0.5">
-                    NIM: <span className="text-blue-300 font-semibold">{currentUser.nim}</span> &bull; Kelas {currentUser.klub_hari}
+                    NIM: <span className="text-blue-300 font-semibold">{currentUser.nim}</span> &bull; {ArenaStore.resolveUserCohortName(currentUser)}
                   </div>
                 </div>
               </div>

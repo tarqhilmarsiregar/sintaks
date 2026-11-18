@@ -49,26 +49,65 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
     setCohorts(ArenaStore.getCohorts());
   }, []);
 
-  // Guard autentikasi & RBAC + Hidrasi Live Supabase
+  // Guard autentikasi & RBAC + Hidrasi Live Supabase (dengan pemulihan otomatis dari HttpOnly cookie)
   useEffect(() => {
-    const user = ArenaStore.getCurrentUser();
-    if (!user) {
-      router.replace('/login');
-      return;
-    }
-    if (user.role !== 'ADMIN') {
-      router.replace('/mahasiswa/dashboard');
-      return;
-    }
-    refreshData();
-    setIsCheckingAuth(false);
+    let cancelled = false;
 
-    // Sinkronisasi state terbaru dari Supabase PostgreSQL (non-blocking)
-    ArenaStore.hydrateFromServer({ role: 'ADMIN', nim: user.nim }).then((res) => {
-      if (res.synced) {
-        refreshData();
+    const initAdminSession = async () => {
+      let user = ArenaStore.getCurrentUser();
+
+      // Jika localStorage kosong namun HttpOnly cookie valid (misal akun baru / tab baru), pulihkan dari server
+      if (!user) {
+        try {
+          const sessionRes = await fetch('/api/auth/session', {
+            cache: 'no-store',
+            credentials: 'same-origin',
+          });
+          if (sessionRes.ok) {
+            const sessionData = await sessionRes.json();
+            if (sessionData?.authenticated && sessionData?.session) {
+              if (sessionData.session.role !== 'ADMIN') {
+                if (!cancelled) router.replace('/mahasiswa/dashboard');
+                return;
+              }
+              await ArenaStore.hydrateFromServer({
+                role: 'ADMIN',
+                nim: sessionData.session.nim,
+              });
+              user = ArenaStore.getCurrentUser();
+            }
+          }
+        } catch {
+          // Abaikan error jaringan, lanjut redirect ke login
+        }
       }
-    });
+
+      if (cancelled) return;
+
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+      if (user.role !== 'ADMIN') {
+        router.replace('/mahasiswa/dashboard');
+        return;
+      }
+
+      refreshData();
+      setIsCheckingAuth(false);
+
+      // Sinkronisasi state terbaru dari Supabase PostgreSQL (non-blocking)
+      ArenaStore.hydrateFromServer({ role: 'ADMIN', nim: user.nim }).then((res) => {
+        if (!cancelled && res.synced) {
+          refreshData();
+        }
+      });
+    };
+
+    initAdminSession();
+    return () => {
+      cancelled = true;
+    };
   }, [router, refreshData]);
 
   const showAlert = (text: string, type: 'success' | 'error' = 'success') => {
@@ -80,9 +119,9 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
     router.push(`/admin/${tabId}`);
   };
 
-  const handleLogout = () => {
-    ArenaStore.logout();
-    router.replace('/login');
+  const handleLogout = async () => {
+    await ArenaStore.logout();
+    window.location.assign('/login');
   };
 
   // --- GAME ACTIONS ---
@@ -497,6 +536,7 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
               onBulkAddUsers={handleBulkCreateUsers}
               onAdminResetPassword={handleAdminResetPassword}
               onDeleteUser={handleDeleteUser}
+              onRefresh={refreshData}
             />
           )}
 

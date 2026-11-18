@@ -38,9 +38,8 @@ export default function ProfileTab({
   submissions,
   games
 }: ProfileTabProps) {
-  if (!currentUser) return null;
-
-  const [codename, setCodename] = useState(currentUser.codename);
+  // Seluruh hooks wajib dipanggil sebelum conditional return (React Rules of Hooks)
+  const [codename, setCodename] = useState(currentUser?.codename || '');
   const [successMsg, setSuccessMsg] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -52,6 +51,8 @@ export default function ProfileTab({
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState('');
   const [isChangingPass, setIsChangingPass] = useState(false);
+
+  if (!currentUser) return null;
 
   // Fallback data resolver
   const allTeams = teams || ArenaStore.getTeams();
@@ -190,7 +191,7 @@ export default function ProfileTab({
                   {currentUser.nama_lengkap}
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  Kelas {currentUser.klub_hari}
+                  {ArenaStore.resolveUserCohortName(currentUser)}
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" />
@@ -317,7 +318,7 @@ export default function ProfileTab({
           <div className="bg-[#080d1a] p-3.5 rounded-lg border border-[#1e293b]">
             <span className="text-slate-400 text-[11px] uppercase block mb-1">Kelas Reguler &amp; Jadwal Lab</span>
             <div className="text-sm font-bold text-blue-400">
-              {currentUser.kelas_reguler} • Hari {currentUser.klub_hari}
+              {currentUser.kelas_reguler} • {ArenaStore.resolveUserCohortName(currentUser)}
             </div>
           </div>
         </div>

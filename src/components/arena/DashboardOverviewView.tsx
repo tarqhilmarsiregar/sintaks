@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Game, Submission, User, LeaderboardPlayer, Team } from '@/types/arena';
+import { Game, Submission, User, LeaderboardPlayer, Team, Cohort } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
 import { StudentActiveMenu } from './StudentSidebar';
 import StatCardsGrid, { ArenaUserStats } from './StatCardsGrid';
@@ -17,13 +17,13 @@ import {
   CheckCircle2,
   Flame,
   BookOpen,
-  Sparkles,
 } from 'lucide-react';
 
 interface DashboardOverviewViewProps {
   stats: ArenaUserStats;
   currentUser: User;
   games: Game[];
+  cohorts?: Cohort[];
   submissions: Submission[];
   leaderboardPlayers: LeaderboardPlayer[];
   teams: Team[];
@@ -36,6 +36,7 @@ export default function DashboardOverviewView({
   stats,
   currentUser,
   games,
+  cohorts,
   submissions,
   leaderboardPlayers,
   teams,
@@ -43,6 +44,10 @@ export default function DashboardOverviewView({
   onViewEditorial,
   onNavigateTab,
 }: DashboardOverviewViewProps) {
+  const userCohortLabel = useMemo(
+    () => ArenaStore.resolveUserCohortName(currentUser, cohorts),
+    [currentUser, cohorts]
+  );
   // Ambil tim user saat ini (memoized)
   const myTeam = useMemo(() => {
     return teams.find(
@@ -101,7 +106,7 @@ export default function DashboardOverviewView({
               <span className="text-white font-mono">{currentUser.codename}</span>
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl leading-relaxed">
-              Sesi aktif terdaftar pada <strong className="text-slate-200 font-semibold">Kelas {currentUser.klub_hari}</strong>{currentUser.periode ? ` • ${currentUser.periode}` : ''}.
+              Sesi aktif terdaftar pada <strong className="text-slate-200 font-semibold">{userCohortLabel}</strong>{currentUser.periode ? ` • ${currentUser.periode}` : ''}.
               Selesaikan problem set algoritma mingguan, pelajari editorial pembahasan dosen, dan kumpulkan poin XP untuk meningkatkan peringkat klasemen.
             </p>
           </div>
@@ -248,7 +253,7 @@ export default function DashboardOverviewView({
                   <div className="font-bold text-white text-sm flex items-center gap-2">
                     <span>⚔️ {myTeam.nama_tim}</span>
                     <span className="text-[11px] font-mono text-slate-300 px-2 py-0.5 rounded bg-[#131d33] border border-[#223354]">
-                      Kelas {myTeam.klub_hari}
+                      {userCohortLabel}
                     </span>
                   </div>
                   <div className="font-extrabold text-amber-400 font-mono text-sm">
@@ -293,7 +298,7 @@ export default function DashboardOverviewView({
                 </h3>
               </div>
               <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#131d33] border border-[#223354] text-slate-300">
-                Kelas {currentUser.klub_hari}
+                {userCohortLabel}
               </span>
             </div>
 
@@ -350,7 +355,7 @@ export default function DashboardOverviewView({
             {rankMotivation && rankMotivation.isLeader && (
               <div className="mt-3 px-3 py-2 rounded-lg bg-amber-950/20 border border-amber-500/30 text-xs font-mono text-amber-300 flex items-center gap-2">
                 <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="truncate">Anda memimpin peringkat #1 di Kelas {currentUser.klub_hari}!</span>
+                <span className="truncate">Anda memimpin peringkat #1 di {userCohortLabel}!</span>
               </div>
             )}
 

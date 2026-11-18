@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/types/arena';
+import { ArenaStore } from '@/lib/arena-store';
 import { calculateLevelInfo } from '@/lib/gamification';
 import {
   LayoutDashboard,
@@ -132,9 +133,9 @@ export default function StudentSidebar({
               </h3>
 
               <div className="flex items-center gap-1.5 shrink-0">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-xs font-mono text-blue-300 font-semibold shadow-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                  <span>Kelas {currentUser.klub_hari}</span>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-xs font-mono text-blue-300 font-semibold shadow-sm max-w-[140px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                  <span className="truncate">{ArenaStore.resolveUserCohortName(currentUser)}</span>
                 </div>
 
                 {onCloseMobile && (
