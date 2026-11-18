@@ -1149,3 +1149,58 @@ File antarmuka: `gas/Index.html` & `public/arena.html`.
 - **Hasil Verifikasi Mutu (QA):**
   - Production Build: **PASS (Exit Code 0)** via `npx.cmd next build`.
   - Automated Verification Suite: **484/484 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 47: Post-Deploy Hardening (Branch `fix/post-deploy-issues`) — Single-Click Login, Race-Free Onboarding, Dynamic Edit Kelas & Strict Cohort Game Isolation
+- **Konteks & Daftar 4 Temuan Uji Produksi:**
+  1. Login kadang memerlukan 2x klik karena Next.js Router Cache memutar ulang redirect lama dari middleware sebelum cookie `HttpOnly` aktif.
+  2. Modal onboarding ganti sandi mahasiswa sempat macet di state `"Menyimpan Kredensial..."` hingga browser di-refresh akibat race condition hidrasi + hilangnya blok `finally` & properti `mode` pada respons error API.
+  3. Belum tersedia tombol **Edit Kelas / Kohort**, serta modal Buat Kelas masih memuat 7 paket soal hardcode (`ALL_GAME_PACKAGES` G1–G7) meski database masih memiliki 0 paket soal.
+  4. Portal mahasiswa masih menampilkan `"Kelas ALL"` (karena membaca `klub_hari` alih-alih `id_cohort`) dan paket soal lintas kelas belum terisolasi ketat pada lapisan server & UI.
+- **Implementasi Multi-Perspektif:**
+  - **Fix 1 (Auth Redirect & Middleware Caching):**
+    - [src/middleware.ts](file:///d:/CP-Arena/src/middleware.ts): Menambahkan header `Cache-Control: no-store, no-cache, must-revalidate` pada semua respons redirect middleware.
+    - [src/app/login/page.tsx](file:///d:/CP-Arena/src/app/login/page.tsx): Menambahkan timeout 3 detik untuk reCAPTCHA v3, menyertakan `credentials: 'same-origin'`, dan menggunakan hard navigation `window.location.assign(...)` pasca-login agar cookie `HttpOnly` langsung dikirim pada request segar tanpa bentrok Router Cache.
+  - **Fix 2 (Race-Free Onboarding Dismissal):**
+    - [src/app/api/auth/password/route.ts](file:///d:/CP-Arena/src/app/api/auth/password/route.ts): Memastikan seluruh respons error mode live menyertakan `mode: 'supabase'`.
+    - [src/components/arena/FirstLoginOnboardingModal.tsx](file:///d:/CP-Arena/src/components/arena/FirstLoginOnboardingModal.tsx) & [src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx): Menambahkan `credentials: 'same-origin'`, `finally { setIsSubmitting(false) }`, `ArenaStore.markLocalUserOnboarded()`, guard `onboardingCompletedRef` agar hidrasi latar belakang tidak membuka ulang modal, serta banner notifikasi sukses seketika.
+  - **Fix 3 (Dynamic Edit Kelas & Zero Hardcode G1–G7):**
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): Menghapus fallback hardcode `['G1'..'G7']` pada `createCohort()`, meningkatkan `updateCohort()` (validasi unik kode kelas & sinkronisasi periode mahasiswa).
+    - [src/components/admin/tabs/AdminStudentMonitorTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminStudentMonitorTab.tsx): Menghapus konstanta `ALL_GAME_PACKAGES`, menampilkan daftar paket soal 100% dinamis dari database (plus pesan netral bila 0 paket soal), serta menambahkan tombol **Edit Kelas** (ikon pensil) dan opsi **Hapus Kelas** di modal kelas.
+  - **Fix 4 (Strict Cohort Game Isolation & Zero `"Kelas ALL"`):**
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): Menambahkan `resolveUserCohortName()` dan `getGamesForUser()`, serta memperluas `getLeaderboardPlayers()` agar mendukung `id_cohort` dinamis.
+    - [src/lib/supabase/repository.ts](file:///d:/CP-Arena/src/lib/supabase/repository.ts): Memperketat `sanitizeDatasetForStudent()` agar server `/api/arena/sync` hanya mengirim `games` dan `questions` milik kelas/kohort mahasiswa tersebut (0% kebocoran lintas kelas).
+    - [DashboardOverviewView.tsx](file:///d:/CP-Arena/src/components/arena/DashboardOverviewView.tsx), [GameCatalogGrid.tsx](file:///d:/CP-Arena/src/components/arena/GameCatalogGrid.tsx), [ProfileTab.tsx](file:///d:/CP-Arena/src/components/arena/ProfileTab.tsx), [StudentSidebar.tsx](file:///d:/CP-Arena/src/components/arena/StudentSidebar.tsx), [SubmissionsHistoryTab.tsx](file:///d:/CP-Arena/src/components/arena/SubmissionsHistoryTab.tsx), & [TeamBattleTab.tsx](file:///d:/CP-Arena/src/components/arena/TeamBattleTab.tsx): Seluruh label kelas kini merujuk ke `resolveUserCohortName()` (Zero `"Kelas ALL"`) dan katalog/submisi/tim terisolasi ketat per kohort.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs): Menambahkan **Test Group 29** dengan 24 assertions baru mencakup seluruh 4 perbaikan produksi.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **508/508 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+  - Production Build: **PASS (Exit Code 0)** via `npx.cmd next build`.
+
+---
+
+### Bagian 48: Post-Deploy Hardening Putaran 2 (Branch `fix/post-deploy-issues`) — SSOT Strict Unassignment, Zero Unassigned Leak & New-Account Single-Click Login
+- **Konteks & Akar Masalah (Root Causes):**
+  1. **Login Akun Baru Terasa Refresh (Butuh 2x Submit):**
+     - Di [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts), `getCurrentUser()` sebelumnya menghapus `CURRENT_USER` dari `localStorage` jika `nim` belum ada di cache lokal `cp_arena_users`. Akibatnya, saat akun baru pertama kali login di browser baru, `hydrateFromServer()` memanggil `getCurrentUser()` sebelum fetch `users` selesai sehingga `CURRENT_USER` terhapus, lalu dashboard langsung me-redirect balik ke `/login` (baru berhasil pada klik kedua setelah `cp_arena_users` terisi).
+     - Ditambah *race condition* antara `useEffect` `/api/auth/session` di `/login`, `logout()` *fire-and-forget* tanpa `await`, dan container dashboard yang tidak memulihkan sesi dari `HttpOnly` cookie saat `localStorage` kosong.
+  2. **Kebocoran Paket Soal Belum Ditugaskan & Gagal Unassign:**
+     - `ArenaStore.createGame()` sebelumnya melakukan fallback ke **seluruh kelas** saat `allowed_cohort_ids` kosong (`[]`), dan modal Buat Paket di `AdminContestControlTab` otomatis mencentang seluruh kelas.
+     - Saat unassign melalui `updateGame()` atau `updateCohort()`, key kelas pada `game.cohort_statuses` tidak ikut dipangkas, sementara `isGameAllowedForUser()` dan `sanitizeDatasetForStudent()` masih mengevaluasi `allowedByCohort || allowedByStatusMap`, sehingga paket yang sudah di-unassign tetap terlihat selamanya.
+- **Implementasi Perbaikan:**
+  - **Single Source of Truth (`cohort.allowed_game_ids`) & Pruning Dua Arah:**
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): Menghapus fallback semua kelas pada `createGame()` (kosong = Draft / 0 kelas), menghapus kondisi `|| allowedByStatusMap` pada `isGameAllowedForUser()`, menambahkan pemangkasan key `cohort_statuses` secara sinkron pada `updateGame()` dan `updateCohort()`, membatasi `freezeCohort()`/`unfreezeCohort()` hanya pada game yang diizinkan, serta menyelaraskan `getUserStats()` ke `getGamesForUser()` & `resolveUserCohortName()`.
+    - [src/lib/supabase/repository.ts](file:///d:/CP-Arena/src/lib/supabase/repository.ts): Menghapus `|| byStatusMap` di `sanitizeDatasetForStudent()` sehingga isolasi server 100% mengikuti `cohort.allowed_game_ids` (termasuk memblokir baris legacy dengan `cohort_statuses` usang).
+    - [src/components/admin/tabs/AdminContestControlTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminContestControlTab.tsx): Default modal buat paket diubah ke `[]` (Draft / 0 kelas), menambah badge `"Draft (0 Kelas)"`, memperbaiki kalkulasi badge jumlah `OPEN`/`FROZEN` per kelas, dan menghapus `animate-pulse` (Zero AI Slop).
+  - **New-Account Single-Click Login & Session Recovery:**
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts): Memperbaiki `getCurrentUser()` agar tidak menghapus sesi akun baru sebelum `cp_arena_users` terhidrasi, menambahkan `flushPendingSync()`, `credentials: 'same-origin'` pada write-through sync, `hydrateFromServer({ nim })` recovery, serta `async logout()` yang menunggu pending sync + `/api/auth/logout` selesai.
+    - [src/app/login/page.tsx](file:///d:/CP-Arena/src/app/login/page.tsx): Menambahkan `AbortController` + `isSubmittingRef` agar respons `401` tertunda dari `useEffect` tidak pernah menghapus sesi login baru.
+    - [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx) & [src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx): Menambahkan pemulihan otomatis dari `/api/auth/session` + `hydrateFromServer()` sebelum redirect ke `/login`, serta `await ArenaStore.logout()` saat keluar.
+  - **Quality Assurance (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs): Menambahkan **Test Group 30** (23 assertions baru) memverifikasi zero-leak paket Draft, siklus Assign -> Unassign via `updateGame` & `updateCohort`, pemblokiran legacy `cohort_statuses`, ketahanan sesi akun baru di `getCurrentUser()`, serta guard UI/container.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **531/531 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+  - Production Build: **PASS (Exit Code 0)** via `npx.cmd next build`.

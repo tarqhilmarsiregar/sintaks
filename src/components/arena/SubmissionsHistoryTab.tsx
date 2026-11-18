@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Game, Submission, User } from '@/types/arena';
+import { ArenaStore } from '@/lib/arena-store';
 import {
   FileText,
   CheckCircle2,
@@ -28,12 +29,24 @@ export default function SubmissionsHistoryTab({
 }: SubmissionsHistoryTabProps) {
   const [filterMode, setFilterMode] = useState<'MY' | 'CLASS'>('MY');
 
-  // Filter submisi sesuai mode
+  const userCohortLabel = ArenaStore.resolveUserCohortName(currentUser);
+  const allUsers = ArenaStore.getUsers();
+  const cohortNims = new Set(
+    allUsers
+      .filter((u) =>
+        currentUser.id_cohort
+          ? u.id_cohort === currentUser.id_cohort
+          : u.klub_hari === currentUser.klub_hari
+      )
+      .map((u) => u.nim)
+  );
+
+  // Filter submisi sesuai mode (terisolasi ketat per kelas / kohort)
   const filteredSubs = submissions.filter((sub) => {
     if (filterMode === 'MY') {
       return sub.nim === currentUser.nim;
     }
-    return sub.klub_hari === currentUser.klub_hari;
+    return cohortNims.has(sub.nim);
   });
 
   return (
@@ -75,7 +88,7 @@ export default function SubmissionsHistoryTab({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Semua Kelas {currentUser.klub_hari}
+            Semua {userCohortLabel}
           </button>
         </div>
       </div>

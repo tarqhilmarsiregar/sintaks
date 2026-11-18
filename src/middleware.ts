@@ -25,7 +25,9 @@ export async function middleware(req: NextRequest) {
       const target = req.nextUrl.clone();
       target.pathname = '/mahasiswa/dashboard';
       target.search = '';
-      return NextResponse.redirect(target);
+      const res = NextResponse.redirect(target);
+      res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+      return res;
     }
     return NextResponse.next();
   }
@@ -35,7 +37,9 @@ export async function middleware(req: NextRequest) {
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = '/login';
     loginUrl.searchParams.set('reason', 'auth_required');
-    return NextResponse.redirect(loginUrl);
+    const res = NextResponse.redirect(loginUrl);
+    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res;
   }
 
   // 3. Mode lokal/offline dev tanpa Supabase -> serahkan fallback guard ke client

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArenaStore } from '@/lib/arena-store';
 import { SITE_CONFIG } from '@/config/site';
@@ -30,6 +30,8 @@ export default function LoginPage() {
   const [isRecaptchaReady, setIsRecaptchaReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const sessionCheckAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // Jika diarahkan dari Server Middleware (sesi HttpOnly belum ada / kedaluwarsa),
@@ -41,17 +43,27 @@ export default function LoginPage() {
       // Jika sudah ada sesi lokal aktif, pastikan sesi HttpOnly server juga valid sebelum redirect
       const user = ArenaStore.getCurrentUser();
       if (user) {
-        fetch('/api/auth/session', { cache: 'no-store', credentials: 'same-origin' })
+        const controller = new AbortController();
+        sessionCheckAbortRef.current = controller;
+        fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal: controller.signal,
+        })
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
+            // Jangan pernah menimpa sesi jika pengguna sudah menekan tombol Login
+            if (isSubmittingRef.current || controller.signal.aborted) return;
             if (data?.authenticated && data?.session) {
-              router.replace(data.session.role === 'ADMIN' ? '/admin' : '/mahasiswa');
+              const target = data.session.role === 'ADMIN' ? '/admin/contests' : '/mahasiswa/dashboard';
+              window.location.assign(target);
             } else {
               ArenaStore.setCurrentUser(null);
             }
           })
           .catch(() => {
-            router.replace(user.role === 'ADMIN' ? '/admin' : '/mahasiswa');
+            if (isSubmittingRef.current || controller.signal.aborted) return;
+            router.replace(user.role === 'ADMIN' ? '/admin/contests' : '/mahasiswa/dashboard');
           });
       }
     }
@@ -81,10 +93,15 @@ export default function LoginPage() {
     } else {
       setIsRecaptchaReady(true);
     }
-  }, []);
+
+    return () => {
+      sessionCheckAbortRef.current?.abort();
+    };
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
     setError(null);
 
     if (!nim.trim()) {
@@ -97,6 +114,9 @@ export default function LoginPage() {
       return;
     }
 
+    // Batalkan segera pengecekan sesi lama agar respons 401 tertunda tidak menghapus sesi baru
+    isSubmittingRef.current = true;
+    sessionCheckAbortRef.current?.abort();
     setLoading(true);
 
     const siteKey =
@@ -105,30 +125,34 @@ export default function LoginPage() {
 
     let token: string | null = null;
 
-    // Ambil token eksekusi reCAPTCHA v3
+    // Ambil token eksekusi reCAPTCHA v3 (dengan timeout 3 detik agar tidak menggantung)
     if (!token) {
       try {
         token = await new Promise<string>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('reCAPTCHA timeout')), 3000);
           if (typeof window !== 'undefined' && window.grecaptcha?.ready) {
             window.grecaptcha.ready(async () => {
               try {
                 if (typeof window.grecaptcha?.execute === 'function') {
                   const t = await window.grecaptcha.execute(siteKey, { action: 'login' });
+                  clearTimeout(timer);
                   resolve(t);
                 } else {
+                  clearTimeout(timer);
                   reject(new Error('Layanan grecaptcha.execute belum siap'));
                 }
               } catch (e) {
+                clearTimeout(timer);
                 reject(e);
               }
             });
           } else {
+            clearTimeout(timer);
             reject(new Error('reCAPTCHA v3 belum terinisialisasi'));
           }
         });
       } catch (err: any) {
         console.warn('Peringatan eksekusi reCAPTCHA v3:', err);
-        // Fallback untuk pengujian offline
         token = 'demo-bypass-token';
       }
     }
@@ -145,6 +169,7 @@ export default function LoginPage() {
 
       if (!verifyData.success) {
         setError(verifyData.error || 'Verifikasi reCAPTCHA v3 gagal. Terindikasi bot atau token tidak valid.');
+        isSubmittingRef.current = false;
         setLoading(false);
         return;
       }
@@ -157,6 +182,7 @@ export default function LoginPage() {
       const loginRes = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ nim, password }),
       });
 
@@ -169,10 +195,16 @@ export default function LoginPage() {
             role: loginData.user.role,
             nim: loginData.user.nim,
           });
-          setLoading(false);
-          router.push(loginData.user.role === 'ADMIN' ? '/admin' : '/mahasiswa');
+          // Pastikan currentUser tetap terisi setelah hidrasi selesai
+          if (!ArenaStore.getCurrentUser()) {
+            ArenaStore.setCurrentUser(loginData.user);
+          }
+          // Hard navigation agar browser mengirim cookie HttpOnly baru tanpa bentrok Next.js Router Cache
+          const targetPath = loginData.user.role === 'ADMIN' ? '/admin/contests' : '/mahasiswa/dashboard';
+          window.location.assign(targetPath);
           return;
         } else {
+          isSubmittingRef.current = false;
           setLoading(false);
           setError(loginData.error || 'Login gagal. Periksa kembali NIM dan Kata Sandi Anda.');
           return;
@@ -184,15 +216,13 @@ export default function LoginPage() {
 
     // 2. Fallback penyimpanan lokal (saat mode dev offline / Supabase belum dikonfigurasi)
     const res = ArenaStore.login(nim, password);
-    setLoading(false);
 
     if (res.success && res.user) {
-      if (res.user.role === 'ADMIN') {
-        router.push('/admin');
-      } else {
-        router.push('/mahasiswa');
-      }
+      const targetPath = res.user.role === 'ADMIN' ? '/admin/contests' : '/mahasiswa/dashboard';
+      window.location.assign(targetPath);
     } else {
+      isSubmittingRef.current = false;
+      setLoading(false);
       setError(res.message || 'Login gagal. Periksa kembali NIM dan Password Anda.');
     }
   };

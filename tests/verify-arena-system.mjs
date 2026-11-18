@@ -1984,6 +1984,364 @@ assert(fs.existsSync(path.resolve('src/components/admin/modals/BulkImportStudent
 const passRouteCode = fs.readFileSync(path.resolve('src/app/api/auth/password/route.ts'), 'utf8');
 assert(passRouteCode.includes("action === 'admin-reset'") && passRouteCode.includes("session.role !== 'ADMIN'"), '/api/auth/password mendukung admin-reset khusus otoritas ADMIN');
 
+// ========================================================
+// TEST GROUP 29: Post-Deploy Fixes — Strict Cohort Isolation, Dynamic Cohort Edit & Auth/Onboarding Race-Free
+// ========================================================
+console.log('\n--- [TEST GROUP 29: Post-Deploy Fixes — Strict Cohort Isolation, Dynamic Cohort Edit & Auth/Onboarding Race-Free] ---');
+
+// 29.1 Issue 3: Zero Hardcode G1-G7 saat Buat Kelas Baru & Fitur Edit Kelas
+const freshEmptyClassRes = ArenaStore.createCohort({
+  nama_kelas: 'Kelas Kamis SI 2026',
+  kode_kelas: 'KAMIS-SI-26',
+  periode: 'Ganjil 2026'
+});
+assert(freshEmptyClassRes.success === true, 'Membuat kelas baru tanpa paket soal awal berhasil');
+assert(Array.isArray(freshEmptyClassRes.cohort?.allowed_game_ids) && freshEmptyClassRes.cohort.allowed_game_ids.length === 0, 'Kelas baru memiliki 0 paket soal default (Zero Hardcode G1-G7)');
+
+const secondIsoClassRes = ArenaStore.createCohort({
+  nama_kelas: 'Kelas Jumat TI 2026',
+  kode_kelas: 'JUMAT-TI-26',
+  periode: 'Ganjil 2026'
+});
+assert(secondIsoClassRes.success === true, 'Membuat kelas kedua untuk uji isolasi berhasil');
+
+// Edit Kelas (update nama, deskripsi, dan hak akses paket soal)
+const editCohortRes = ArenaStore.updateCohort(freshEmptyClassRes.cohort.id_cohort, {
+  nama_kelas: 'Kelas Kamis SI 2026 (Revisi)',
+  deskripsi: 'Deskripsi hasil edit kelas',
+  allowed_game_ids: ['G_ISO_A']
+});
+assert(editCohortRes.success === true, 'Admin berhasil mengedit detail & hak akses kelas');
+assert(editCohortRes.cohort?.nama_kelas === 'Kelas Kamis SI 2026 (Revisi)', 'Nama kelas terbarui akurat');
+assert(editCohortRes.cohort?.allowed_game_ids.includes('G_ISO_A'), 'Hak akses paket soal G_ISO_A terikat ke Kelas A');
+
+const dupEditKodeRes = ArenaStore.updateCohort(freshEmptyClassRes.cohort.id_cohort, {
+  kode_kelas: 'JUMAT-TI-26'
+});
+assert(dupEditKodeRes.success === false, 'Edit kelas menolak kode kelas duplikat milik kelas lain');
+
+// Set hak akses Kelas B hanya untuk G_ISO_B
+ArenaStore.updateCohort(secondIsoClassRes.cohort.id_cohort, {
+  allowed_game_ids: ['G_ISO_B']
+});
+
+const studentTabCode = fs.readFileSync(path.resolve('src/components/admin/tabs/AdminStudentMonitorTab.tsx'), 'utf8');
+assert(!studentTabCode.includes('ALL_GAME_PACKAGES'), 'AdminStudentMonitorTab 100% bebas dari konstanta hardcode ALL_GAME_PACKAGES (G1-G7)');
+
+// 29.2 Issue 4: Label Nama Kelas Akurat (Zero "Kelas ALL") & Isolasi Paket Soal Antar Kelas
+const gameIsoA = {
+  id_game: 'G_ISO_A',
+  ref_pertemuan: 'Pertemuan 1',
+  judul_game: 'Kuis Khusus Kelas Kamis',
+  kategori_materi: 'Logika',
+  kesulitan: 'Easy',
+  mode_game: 'SOLO',
+  status_kamis: 'OPEN',
+  status_jumat: 'UPCOMING',
+  cohort_statuses: { [freshEmptyClassRes.cohort.id_cohort]: 'OPEN' },
+  durasi_total_menit: 15,
+  durasi_per_soal_detik: 60,
+  min_nilai_lulus: 70
+};
+const gameIsoB = {
+  id_game: 'G_ISO_B',
+  ref_pertemuan: 'Pertemuan 1',
+  judul_game: 'Kuis Khusus Kelas Jumat',
+  kategori_materi: 'Graph',
+  kesulitan: 'Medium',
+  mode_game: 'SOLO',
+  status_kamis: 'UPCOMING',
+  status_jumat: 'OPEN',
+  cohort_statuses: { [secondIsoClassRes.cohort.id_cohort]: 'OPEN' },
+  durasi_total_menit: 15,
+  durasi_per_soal_detik: 60,
+  min_nilai_lulus: 70
+};
+ArenaStore.saveGames([...ArenaStore.getGames(), gameIsoA, gameIsoB]);
+
+const studentIsoARes = ArenaStore.createUser({
+  nim: '2699101',
+  nama_lengkap: 'Mahasiswa Kelas A',
+  role: 'PESERTA',
+  klub_hari: 'ALL', // simulasi fallback ALL saat kohort dinamis dipilih
+  id_cohort: freshEmptyClassRes.cohort.id_cohort,
+  periode: 'Ganjil 2026',
+  prodi: 'Sistem Informasi',
+  angkatan: 2026,
+  kelas_reguler: 'SI A 26'
+});
+const studentIsoBRes = ArenaStore.createUser({
+  nim: '2699102',
+  nama_lengkap: 'Mahasiswa Kelas B',
+  role: 'PESERTA',
+  klub_hari: 'ALL',
+  id_cohort: secondIsoClassRes.cohort.id_cohort,
+  periode: 'Ganjil 2026',
+  prodi: 'Teknik Informatika',
+  angkatan: 2026,
+  kelas_reguler: 'TI B 26'
+});
+
+const labelA = ArenaStore.resolveUserCohortName(studentIsoARes.user);
+const labelB = ArenaStore.resolveUserCohortName(studentIsoBRes.user);
+assert(labelA === 'Kelas Kamis SI 2026 (Revisi)', `Label Mahasiswa A menampilkan nama kelas asli, bukan Kelas ALL (Aktual: ${labelA})`);
+assert(labelB === 'Kelas Jumat TI 2026', `Label Mahasiswa B menampilkan nama kelas asli, bukan Kelas ALL (Aktual: ${labelB})`);
+assert(!labelA.includes('ALL') && !labelB.includes('ALL'), 'Zero "Kelas ALL" pada label kelas mahasiswa');
+
+// Isolasi Client-Side: getGamesForUser
+const gamesForA = ArenaStore.getGamesForUser(studentIsoARes.user);
+const gamesForB = ArenaStore.getGamesForUser(studentIsoBRes.user);
+assert(gamesForA.some((g) => g.id_game === 'G_ISO_A'), 'Mahasiswa A melihat paket soal miliknya (G_ISO_A)');
+assert(!gamesForA.some((g) => g.id_game === 'G_ISO_B'), 'Isolasi Ketat: Mahasiswa A TIDAK melihat paket soal Kelas B (G_ISO_B)');
+assert(gamesForB.some((g) => g.id_game === 'G_ISO_B'), 'Mahasiswa B melihat paket soal miliknya (G_ISO_B)');
+assert(!gamesForB.some((g) => g.id_game === 'G_ISO_A'), 'Isolasi Ketat: Mahasiswa B TIDAK melihat paket soal Kelas A (G_ISO_A)');
+
+// Isolasi Server-Side: sanitizeDatasetForStudent
+const serverIsoPayloadA = sanitizeDatasetForStudent(
+  {
+    cohorts: [editCohortRes.cohort, ArenaStore.getCohortById(secondIsoClassRes.cohort.id_cohort)],
+    teams: [],
+    users: [studentIsoARes.user, studentIsoBRes.user],
+    games: [gameIsoA, gameIsoB],
+    questions: [
+      { id_soal: 'Q_ISO_A', id_game: 'G_ISO_A', judul: 'Soal A', narasi_soal: 'A', kunci_jawaban: 'X', editorial: 'Ed A', poin_dasar: 50 },
+      { id_soal: 'Q_ISO_B', id_game: 'G_ISO_B', judul: 'Soal B', narasi_soal: 'B', kunci_jawaban: 'Y', editorial: 'Ed B', poin_dasar: 50 }
+    ],
+    submissions: []
+  },
+  '2699101'
+);
+assert(serverIsoPayloadA.games.length === 1 && serverIsoPayloadA.games[0].id_game === 'G_ISO_A', 'Server Sync Isolation: Mahasiswa A hanya menerima 1 paket soal miliknya (G_ISO_A)');
+assert(serverIsoPayloadA.questions.length === 1 && serverIsoPayloadA.questions[0].id_soal === 'Q_ISO_A', 'Server Sync Isolation: Soal Kelas B (Q_ISO_B) terblokir total di server');
+
+// 29.3 Issue 1 & 2: Single-Click Login Redirect & Race-Free Onboarding Cache Sync
+const middlewareCode = fs.readFileSync(path.resolve('src/middleware.ts'), 'utf8');
+assert(middlewareCode.includes('no-store'), 'Middleware menerapkan Cache-Control: no-store pada redirect agar bebas Router Cache loop');
+const loginPageCode = fs.readFileSync(path.resolve('src/app/login/page.tsx'), 'utf8');
+assert(loginPageCode.includes('window.location.assign'), 'Login menggunakan hard navigation window.location.assign untuk langsung membawa HttpOnly cookie baru');
+assert(loginPageCode.includes("credentials: 'same-origin'"), 'Login menyertakan credentials: same-origin');
+
+ArenaStore.markLocalUserOnboarded({ ...studentIsoARes.user, is_first_login: false, codename: 'Updated_A' });
+const syncedCurrent = ArenaStore.getCurrentUser();
+const syncedListUser = ArenaStore.getUsers().find((u) => u.nim === '2699101');
+assert(syncedCurrent?.is_first_login === false && syncedCurrent?.codename === 'Updated_A', 'markLocalUserOnboarded memperbarui currentUser sinkron tanpa race-condition');
+assert(syncedListUser?.is_first_login === false && syncedListUser?.codename === 'Updated_A', 'markLocalUserOnboarded memperbarui cache daftar users secara konsisten');
+
+const onboardModalCode = fs.readFileSync(path.resolve('src/components/arena/FirstLoginOnboardingModal.tsx'), 'utf8');
+assert(onboardModalCode.includes('finally') && onboardModalCode.includes('setIsSubmitting(false)'), 'FirstLoginOnboardingModal selalu mereset state loading pada blok finally');
+assert(onboardModalCode.includes("credentials: 'same-origin'"), 'FirstLoginOnboardingModal menyertakan credentials: same-origin');
+
+// ============================================================================
+// TEST GROUP 30: STRICT SSOT UNASSIGNMENT, ZERO UNASSIGNED LEAK & NEW-ACCOUNT SINGLE-CLICK LOGIN
+// ============================================================================
+console.log('\n--- [TEST GROUP 30: Strict SSOT Unassignment, Zero Unassigned Leak & New-Account Single-Click Login] ---');
+
+// 30.1 Buat 2 kelas baru kosong + 2 mahasiswa
+const ssotClassA = ArenaStore.createCohort({
+  nama_kelas: 'Kelas SSOT Alpha',
+  kode_kelas: 'SSOT-A',
+  periode: 'Genap 2026',
+});
+const ssotClassB = ArenaStore.createCohort({
+  nama_kelas: 'Kelas SSOT Beta',
+  kode_kelas: 'SSOT-B',
+  periode: 'Genap 2026',
+});
+assert(ssotClassA.success && ssotClassB.success, 'Membuat 2 kelas uji SSOT berhasil');
+
+const ssotStudentA = ArenaStore.createUser({
+  nim: '2699301',
+  nama_lengkap: 'Mahasiswa SSOT Alpha',
+  role: 'PESERTA',
+  klub_hari: 'ALL',
+  id_cohort: ssotClassA.cohort.id_cohort,
+  periode: 'Genap 2026',
+});
+const ssotStudentB = ArenaStore.createUser({
+  nim: '2699302',
+  nama_lengkap: 'Mahasiswa SSOT Beta',
+  role: 'PESERTA',
+  klub_hari: 'ALL',
+  id_cohort: ssotClassB.cohort.id_cohort,
+  periode: 'Genap 2026',
+});
+assert(ssotStudentA.success && ssotStudentB.success, 'Membuat 2 mahasiswa uji SSOT berhasil');
+
+// 30.2 Buat paket game TANPA assign kelas (allowed_cohort_ids: []) -> ZERO LEAK ke seluruh kelas
+const draftGameRes = ArenaStore.createGame({
+  id_game: 'G_DRAFT_SSOT',
+  ref_pertemuan: 'Pertemuan Draft',
+  judul_game: 'Paket Draft Belum Ditugaskan',
+  kategori_materi: 'Algoritma',
+  kesulitan: 'Easy',
+  mode_game: 'SOLO',
+  allowed_cohort_ids: [],
+  initial_status: 'OPEN',
+});
+assert(draftGameRes.success === true, 'Admin berhasil membuat paket kontes Draft (allowed_cohort_ids: [])');
+assert(
+  Object.keys(draftGameRes.game?.cohort_statuses || {}).length === 0,
+  'Paket Draft memiliki cohort_statuses kosong ({})'
+);
+assert(
+  !ArenaStore.getCohortById(ssotClassA.cohort.id_cohort)?.allowed_game_ids.includes('G_DRAFT_SSOT'),
+  'Kelas A tidak otomatis menerima paket Draft'
+);
+assert(
+  !ArenaStore.getCohortById(ssotClassB.cohort.id_cohort)?.allowed_game_ids.includes('G_DRAFT_SSOT'),
+  'Kelas B tidak otomatis menerima paket Draft'
+);
+assert(
+  ArenaStore.getGamesForUser(ssotStudentA.user).length === 0 &&
+    ArenaStore.getGamesForUser(ssotStudentB.user).length === 0,
+  'Zero Leak: Mahasiswa Kelas A dan B melihat 0 paket saat game belum ditugaskan'
+);
+
+// 30.3 Assign ke Kelas A -> muncul di A, 0 di B -> Unassign via updateGame -> langsung hilang dari A!
+ArenaStore.updateGame('G_DRAFT_SSOT', {
+  allowed_cohort_ids: [ssotClassA.cohort.id_cohort],
+});
+ArenaStore.updateGameCohortStatus('G_DRAFT_SSOT', ssotClassA.cohort.id_cohort, 'OPEN');
+assert(
+  ArenaStore.getGamesForUser(ssotStudentA.user).some((g) => g.id_game === 'G_DRAFT_SSOT'),
+  'Pasca-Assign: Mahasiswa Kelas A melihat paket G_DRAFT_SSOT'
+);
+assert(
+  !ArenaStore.getGamesForUser(ssotStudentB.user).some((g) => g.id_game === 'G_DRAFT_SSOT'),
+  'Pasca-Assign: Mahasiswa Kelas B tetap terisolasi (tidak melihat G_DRAFT_SSOT)'
+);
+
+// Unassign via updateGame([])
+ArenaStore.updateGame('G_DRAFT_SSOT', {
+  allowed_cohort_ids: [],
+});
+const gameAfterUnassign = ArenaStore.getGames().find((g) => g.id_game === 'G_DRAFT_SSOT');
+const cohortAAfterUnassign = ArenaStore.getCohortById(ssotClassA.cohort.id_cohort);
+assert(
+  !cohortAAfterUnassign?.allowed_game_ids.includes('G_DRAFT_SSOT'),
+  'Pasca-Unassign (updateGame): G_DRAFT_SSOT dihapus dari cohort.allowed_game_ids'
+);
+assert(
+  !(ssotClassA.cohort.id_cohort in (gameAfterUnassign?.cohort_statuses || {})) &&
+    !(ssotClassA.cohort.kode_kelas in (gameAfterUnassign?.cohort_statuses || {})),
+  'Pasca-Unassign (updateGame): key kelas dipangkas bersih dari game.cohort_statuses'
+);
+assert(
+  ArenaStore.getGamesForUser(ssotStudentA.user).length === 0,
+  'Pasca-Unassign (updateGame): Paket soal LANGSUNG HILANG dari portal Mahasiswa Kelas A'
+);
+
+// 30.4 Assign ulang ke Kelas B lalu Unassign via updateCohort -> langsung hilang & cohort_statuses bersih!
+ArenaStore.updateCohort(ssotClassB.cohort.id_cohort, {
+  allowed_game_ids: ['G_DRAFT_SSOT'],
+});
+ArenaStore.updateGameCohortStatus('G_DRAFT_SSOT', ssotClassB.cohort.id_cohort, 'OPEN');
+assert(
+  ArenaStore.getGamesForUser(ssotStudentB.user).some((g) => g.id_game === 'G_DRAFT_SSOT'),
+  'Assign via updateCohort: Mahasiswa Kelas B melihat G_DRAFT_SSOT'
+);
+
+ArenaStore.updateCohort(ssotClassB.cohort.id_cohort, {
+  allowed_game_ids: [],
+});
+const gameAfterCohortUnassign = ArenaStore.getGames().find((g) => g.id_game === 'G_DRAFT_SSOT');
+assert(
+  !(ssotClassB.cohort.id_cohort in (gameAfterCohortUnassign?.cohort_statuses || {})) &&
+    !(ssotClassB.cohort.kode_kelas in (gameAfterCohortUnassign?.cohort_statuses || {})),
+  'Pasca-Unassign (updateCohort): key Kelas B dipangkas bersih dari game.cohort_statuses'
+);
+assert(
+  ArenaStore.getGamesForUser(ssotStudentB.user).length === 0,
+  'Pasca-Unassign (updateCohort): Paket soal LANGSUNG HILANG dari portal Mahasiswa Kelas B'
+);
+
+// 30.5 Simulasi baris legacy Supabase dengan cohort_statuses basi namun allowed_game_ids kosong -> Server & Client tetap BLOKIR
+const staleLegacyGame = {
+  ...gameAfterCohortUnassign,
+  cohort_statuses: {
+    [ssotClassA.cohort.id_cohort]: 'OPEN',
+    [ssotClassA.cohort.kode_kelas]: 'OPEN',
+  },
+};
+const staleServerPayload = sanitizeDatasetForStudent(
+  {
+    cohorts: [ArenaStore.getCohortById(ssotClassA.cohort.id_cohort)],
+    teams: [],
+    users: [ssotStudentA.user],
+    games: [staleLegacyGame],
+    questions: [
+      { id_soal: 'Q_STALE', id_game: 'G_DRAFT_SSOT', judul: 'Soal Basi', narasi_soal: 'X', kunci_jawaban: 'A', editorial: 'E', poin_dasar: 50 },
+    ],
+    submissions: [],
+  },
+  '2699301'
+);
+assert(
+  staleServerPayload.games.length === 0 && staleServerPayload.questions.length === 0,
+  'Server SSOT: sanitizeDatasetForStudent memblokir game yang sudah di-unassign walau cohort_statuses legacy masih tersisa'
+);
+assert(
+  ArenaStore.isGameAllowedForUser(
+    ssotStudentA.user,
+    'G_DRAFT_SSOT',
+    [staleLegacyGame],
+    [ArenaStore.getCohortById(ssotClassA.cohort.id_cohort)]
+  ) === false,
+  'Client SSOT: isGameAllowedForUser memblokir game yang sudah di-unassign walau cohort_statuses legacy masih tersisa'
+);
+
+// 30.6 New-Account Single-Click Login: getCurrentUser tidak menghapus sesi akun baru sebelum cp_arena_users terhidrasi
+const brandNewRemoteAdmin = {
+  nim: 'NEWADMIN999',
+  nama_lengkap: 'Dosen Baru Supabase',
+  codename: 'DosenBaru_999',
+  avatar: 'DB',
+  role: 'ADMIN',
+  prodi: 'Teknik Informatika',
+  angkatan: 2026,
+  kelas_reguler: 'DOSEN',
+  klub_hari: 'ALL',
+  total_xp: 0,
+  level: 1,
+  tier_badge: 'Logic Novice',
+  milestones_json: [],
+  id_tim: '',
+  is_first_login: false,
+};
+ArenaStore.setCurrentUser(brandNewRemoteAdmin);
+const retrievedBeforeHydrate = ArenaStore.getCurrentUser();
+assert(
+  retrievedBeforeHydrate !== null && retrievedBeforeHydrate.nim === 'NEWADMIN999',
+  'Anti-Refresh Login: getCurrentUser mempertahankan sesi akun baru meski belum masuk cache localStorage cp_arena_users'
+);
+ArenaStore.setCurrentUser(null);
+
+// 30.7 Guard struktural UI & Container Session Recovery
+const contestTabCode = fs.readFileSync(path.resolve('src/components/admin/tabs/AdminContestControlTab.tsx'), 'utf8');
+assert(
+  contestTabCode.includes('setFormAllowedCohorts([])'),
+  'AdminContestControlTab menginisialisasi pilihan kelas paket baru menjadi [] (Draft / Zero Broadcast)'
+);
+assert(
+  !contestTabCode.includes('animate-pulse'),
+  'AdminContestControlTab bebas dari animate-pulse (Zero AI Slop)'
+);
+const loginCodeLatest = fs.readFileSync(path.resolve('src/app/login/page.tsx'), 'utf8');
+assert(
+  loginCodeLatest.includes('AbortController') && loginCodeLatest.includes('isSubmittingRef'),
+  'Halaman Login membatalkan session-check lama dengan AbortController saat form disubmit'
+);
+const adminContainerCode = fs.readFileSync(path.resolve('src/components/admin/AdminCommandCenterContainer.tsx'), 'utf8');
+const studentContainerCode = fs.readFileSync(path.resolve('src/components/arena/MahasiswaArenaContainer.tsx'), 'utf8');
+assert(
+  adminContainerCode.includes("'/api/auth/session'") && adminContainerCode.includes('await ArenaStore.logout()'),
+  'AdminCommandCenterContainer mendukung pemulihan sesi HttpOnly & await logout sebelum redirect'
+);
+assert(
+  studentContainerCode.includes("'/api/auth/session'") && studentContainerCode.includes('await ArenaStore.logout()'),
+  'MahasiswaArenaContainer mendukung pemulihan sesi HttpOnly & await logout sebelum redirect'
+);
+
 console.log('\n========================================================');
 console.log(`📊 Hasil Verifikasi: ${passedTests}/${totalTests} Uji Lulus (${Math.round((passedTests/totalTests)*100)}%)`);
 console.log('========================================================\n');

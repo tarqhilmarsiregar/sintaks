@@ -149,12 +149,15 @@ export default function TeamBattleTab({
     }
   };
 
+  const userCohortLabel = ArenaStore.resolveUserCohortName(currentUser);
+
   // Tim terbuka di kelas user yang masih punya slot kosong (< 3 anggota)
-  const openTeamsInClass = teams.filter(t =>
-    t.klub_hari === currentUser?.klub_hari &&
-    t.daftar_nim_json.length < 3 &&
-    t.id_tim !== userTeam?.id_tim
-  );
+  const openTeamsInClass = teams.filter(t => {
+    const sameClass = currentUser?.id_cohort
+      ? t.id_cohort === currentUser.id_cohort
+      : t.klub_hari === currentUser?.klub_hari;
+    return sameClass && t.daftar_nim_json.length < 3 && t.id_tim !== userTeam?.id_tim;
+  });
 
   return (
     <div className="space-y-6">
@@ -203,7 +206,7 @@ export default function TeamBattleTab({
                       {userTeam.nama_tim}
                     </h3>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                      Kelas {userTeam.klub_hari}
+                      {userCohortLabel}
                     </span>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                       <Users className="w-3 h-3" />
@@ -494,7 +497,7 @@ export default function TeamBattleTab({
 
                 <div className="mt-4 pt-3 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Tim akan terdaftar resmi di kelas {currentUser?.klub_hari}.</span>
+                  <span>Tim akan terdaftar resmi di {userCohortLabel}.</span>
                 </div>
               </div>
             </div>
@@ -504,7 +507,7 @@ export default function TeamBattleTab({
               <div className="mt-6 pt-6 border-t border-slate-800">
                 <div className="text-xs font-mono font-bold text-white mb-3 flex items-center gap-2">
                   <Users className="w-4 h-4 text-blue-400" />
-                  <span>Tim Terbuka di Kelas {currentUser?.klub_hari} (Slot Masih Tersedia):</span>
+                  <span>Tim Terbuka di {userCohortLabel} (Slot Masih Tersedia):</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

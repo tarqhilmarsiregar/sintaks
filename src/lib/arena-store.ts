@@ -61,6 +61,7 @@ export class ArenaStore {
   private static dbMode: 'supabase' | 'local' = 'local';
   private static supabaseUnconfigured = false;
   private static lastSyncedAt: string | null = null;
+  private static pendingSyncPromises = new Set<Promise<void>>();
 
   private static isBrowser(): boolean {
     return typeof window !== 'undefined';
@@ -74,6 +75,19 @@ export class ArenaStore {
   }
 
   /**
+   * Menunggu seluruh permintaan sinkronisasi write-through yang sedang berjalan selesai
+   * (misal sebelum Admin melakukan logout setelah membuat akun / mengubah kelas).
+   */
+  public static async flushPendingSync(timeoutMs: number = 3000): Promise<void> {
+    if (this.pendingSyncPromises.size === 0) return;
+    const tasks = Array.from(this.pendingSyncPromises);
+    await Promise.race([
+      Promise.allSettled(tasks),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  }
+
+  /**
    * Sinkronisasi write-through non-blocking ke endpoint Supabase (/api/arena/sync).
    * Otomatis nonaktif saat berjalan di unit test (Node), saat hidrasi, atau jika Supabase belum dikonfigurasi.
    */
@@ -81,9 +95,10 @@ export class ArenaStore {
     if (!this.isBrowser() || this.isHydrating || this.supabaseUnconfigured) return;
     if (typeof fetch !== 'function') return;
 
-    fetch('/api/arena/sync', {
+    const reqPromise = fetch('/api/arena/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ entity, items }),
     })
       .then((res) => res.json())
@@ -98,7 +113,12 @@ export class ArenaStore {
       })
       .catch(() => {
         // Fallback aman: data tetap tersimpan di localStorage jika jaringan terputus
+      })
+      .finally(() => {
+        this.pendingSyncPromises.delete(reqPromise);
       });
+
+    this.pendingSyncPromises.add(reqPromise);
   }
 
   /**
@@ -114,6 +134,7 @@ export class ArenaStore {
 
     try {
       const current = this.getCurrentUser();
+      const targetNim = (current?.nim || options?.nim || '').trim().toUpperCase();
 
       // Server membaca role & nim secara kriptografis dari HttpOnly cookie cp_arena_session
       const res = await fetch('/api/arena/sync', {
@@ -146,13 +167,13 @@ export class ArenaStore {
         if (Array.isArray(questions)) this.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(questions));
         if (Array.isArray(submissions)) this.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
 
-        // Perbarui sesi currentUser bila profil di server berubah (misal XP naik atau masuk tim)
-        if (current && Array.isArray(users)) {
-          const freshUser = users.find((u: User) => u.nim.toUpperCase() === current.nim.toUpperCase());
+        // Perbarui atau pulihkan sesi currentUser dari data server (anti-reset untuk akun baru / tab baru)
+        if (targetNim && Array.isArray(users)) {
+          const freshUser = users.find((u: User) => u.nim.toUpperCase() === targetNim);
           if (freshUser) {
             this.setCurrentUser({
               ...freshUser,
-              password: freshUser.password ?? current.password,
+              password: freshUser.password ?? current?.password,
             });
           }
         }
@@ -308,9 +329,8 @@ export class ArenaStore {
       kode_kelas: kodeKelas,
       periode: normalizedPeriode,
       deskripsi: dto.deskripsi?.trim() || undefined,
-      allowed_game_ids: dto.allowed_game_ids && dto.allowed_game_ids.length > 0
-        ? dto.allowed_game_ids
-        : ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'],
+      // Murni dinamis: tidak lagi memaksa hardcode G1-G7 jika belum ada paket soal
+      allowed_game_ids: Array.isArray(dto.allowed_game_ids) ? dto.allowed_game_ids : [],
       is_active: true,
       created_at: new Date().toISOString()
     };
@@ -328,17 +348,98 @@ export class ArenaStore {
       return { success: false, message: 'Kelas tidak ditemukan!' };
     }
 
-    if (updates.periode) {
-      const normalized = this.normalizePeriode(updates.periode);
+    const cleanUpdates: Partial<Cohort> = { ...updates };
+
+    if (cleanUpdates.nama_kelas !== undefined) {
+      const trimmedNama = cleanUpdates.nama_kelas.trim();
+      if (!trimmedNama) {
+        return { success: false, message: 'Nama kelas tidak boleh kosong!' };
+      }
+      cleanUpdates.nama_kelas = trimmedNama;
+    }
+
+    if (cleanUpdates.kode_kelas !== undefined) {
+      const trimmedKode = cleanUpdates.kode_kelas.trim().toUpperCase();
+      if (!trimmedKode) {
+        return { success: false, message: 'Kode kelas tidak boleh kosong!' };
+      }
+      const dupKode = cohorts.some((c, i) => i !== idx && c.kode_kelas.toUpperCase() === trimmedKode);
+      if (dupKode) {
+        return { success: false, message: `Kode kelas "${trimmedKode}" sudah digunakan oleh kelas lain!` };
+      }
+      cleanUpdates.kode_kelas = trimmedKode;
+    }
+
+    if (cleanUpdates.periode) {
+      const normalized = this.normalizePeriode(cleanUpdates.periode);
       if (!normalized) {
         return { success: false, message: 'Format Periode harus: <Ganjil/Genap> <Tahun> (contoh: Ganjil 2025)!' };
       }
-      updates.periode = normalized;
+      cleanUpdates.periode = normalized;
     }
 
-    cohorts[idx] = { ...cohorts[idx], ...updates };
+    const prevCohort = cohorts[idx];
+    const updatedCohort: Cohort = { ...prevCohort, ...cleanUpdates };
+    cohorts[idx] = updatedCohort;
     this.saveCohorts(cohorts);
-    return { success: true, message: 'Data kelas berhasil diperbarui!', cohort: cohorts[idx] };
+
+    // Sinkronisasi dua arah: jika allowed_game_ids diubah, pangkas/inisialisasi key cohort_statuses pada games
+    if (Array.isArray(cleanUpdates.allowed_game_ids)) {
+      const allowedSet = new Set(updatedCohort.allowed_game_ids);
+      const games = this.getGames();
+      let gamesChanged = false;
+      const keysToPrune = [
+        prevCohort.id_cohort,
+        prevCohort.kode_kelas,
+        updatedCohort.id_cohort,
+        updatedCohort.kode_kelas,
+      ].filter(Boolean);
+
+      games.forEach((g) => {
+        const statuses = { ...(g.cohort_statuses || {}) };
+        if (allowedSet.has(g.id_game)) {
+          if (!statuses[updatedCohort.id_cohort]) {
+            statuses[updatedCohort.id_cohort] =
+              statuses[prevCohort.id_cohort] || statuses[prevCohort.kode_kelas] || 'UPCOMING';
+            g.cohort_statuses = statuses;
+            gamesChanged = true;
+          }
+        } else {
+          let removedAny = false;
+          keysToPrune.forEach((k) => {
+            if (k in statuses) {
+              delete statuses[k];
+              removedAny = true;
+            }
+          });
+          if (removedAny) {
+            g.cohort_statuses = statuses;
+            gamesChanged = true;
+          }
+        }
+      });
+
+      if (gamesChanged) {
+        this.saveGames(games);
+      }
+    }
+
+    // Sinkronkan periode pada mahasiswa terdaftar jika periode kelas diperbarui
+    if (cleanUpdates.periode && cleanUpdates.periode !== prevCohort.periode) {
+      const users = this.getUsers();
+      let usersChanged = false;
+      users.forEach((u) => {
+        if (u.id_cohort === updatedCohort.id_cohort) {
+          u.periode = updatedCohort.periode;
+          usersChanged = true;
+        }
+      });
+      if (usersChanged) {
+        this.saveUsers(users);
+      }
+    }
+
+    return { success: true, message: `Kelas "${updatedCohort.nama_kelas}" berhasil diperbarui!`, cohort: updatedCohort };
   }
 
   public static deleteCohort(id: string): { success: boolean; message: string } {
@@ -359,15 +460,101 @@ export class ArenaStore {
     return { success: true, message: `Kelas "${target.nama_kelas}" berhasil dihapus!` };
   }
 
-  public static isGameAllowedForUser(user: User | null | undefined, gameId: string): boolean {
-    if (!user) return true;
-    if (user.role === 'ADMIN') return true;
-    if (!user.id_cohort) {
-      return true;
+  /**
+   * Single Source of Truth untuk nama kelas / kohort pengguna.
+   * Mencegah munculnya label "Kelas ALL" pada portal mahasiswa.
+   */
+  public static resolveUserCohortName(user: User | null | undefined, cohorts?: Cohort[]): string {
+    if (!user) return '-';
+    if (user.role === 'ADMIN') return 'Dosen Pembina';
+
+    const list = cohorts && cohorts.length > 0 ? cohorts : this.getCohorts();
+    if (user.id_cohort) {
+      const found = list.find(
+        (c) => c.id_cohort === user.id_cohort || c.kode_kelas === user.id_cohort
+      );
+      if (found) return found.nama_kelas;
     }
-    const cohort = this.getCohortById(user.id_cohort);
-    if (!cohort) return true;
-    return cohort.allowed_game_ids.includes(gameId);
+
+    if (user.klub_hari && user.klub_hari !== 'ALL') {
+      const byCode = list.find((c) => c.kode_kelas.toUpperCase() === user.klub_hari.toUpperCase());
+      if (byCode) return byCode.nama_kelas;
+      return `Kelas ${user.klub_hari}`;
+    }
+
+    return user.kelas_reguler || 'Belum Ditugaskan';
+  }
+
+  /**
+   * Isolasi ketat paket soal per kelas / kohort (Single Source of Truth: cohort.allowed_game_ids).
+   * Mahasiswa HANYA melihat paket soal yang secara eksplisit terdaftar pada cohort.allowed_game_ids.
+   * Field game.cohort_statuses hanya mengatur status (UPCOMING/OPEN/FROZEN/ENDED), TIDAK PERNAH memberi izin akses.
+   */
+  public static isGameAllowedForUser(
+    user: User | null | undefined,
+    gameId: string,
+    _allGames?: Game[],
+    allCohorts?: Cohort[]
+  ): boolean {
+    if (!user) return false;
+    if (user.role === 'ADMIN') return true;
+
+    const cohorts = allCohorts ?? this.getCohorts();
+
+    if (user.id_cohort) {
+      const cohort = cohorts.find(
+        (c) => c.id_cohort === user.id_cohort || c.kode_kelas === user.id_cohort
+      );
+      if (!cohort) return false;
+      return Array.isArray(cohort.allowed_game_ids) && cohort.allowed_game_ids.includes(gameId);
+    }
+
+    // Fallback untuk akun legacy tanpa id_cohort namun memiliki klub_hari spesifik (KAMIS/JUMAT/LOMBA)
+    if (user.klub_hari && user.klub_hari !== 'ALL') {
+      const matchedCohort = cohorts.find(
+        (c) =>
+          c.kode_kelas.toUpperCase() === user.klub_hari.toUpperCase() ||
+          c.id_cohort === `c-${user.klub_hari.toLowerCase()}`
+      );
+      if (!matchedCohort) return false;
+      return Array.isArray(matchedCohort.allowed_game_ids) && matchedCohort.allowed_game_ids.includes(gameId);
+    }
+
+    return false;
+  }
+
+  public static getGamesForUser(
+    user: User | null | undefined,
+    allGames?: Game[],
+    allCohorts?: Cohort[]
+  ): Game[] {
+    const games = allGames ?? this.getGames();
+    if (!user) return [];
+    if (user.role === 'ADMIN') return games;
+    const cohorts = allCohorts ?? this.getCohorts();
+    return games.filter((g) => this.isGameAllowedForUser(user, g.id_game, games, cohorts));
+  }
+
+  /**
+   * Memperbarui cache lokal (currentUser + users) secara sinkron pasca-onboarding Supabase
+   * tanpa memicu write-through POST ulang agar bebas race-condition.
+   */
+  public static markLocalUserOnboarded(updatedUser: User): void {
+    const prevHydrating = this.isHydrating;
+    this.isHydrating = true;
+    try {
+      this.setCurrentUser(updatedUser);
+      const users = this.getUsers();
+      const idx = users.findIndex((u) => u.nim.toUpperCase() === updatedUser.nim.toUpperCase());
+      if (idx !== -1) {
+        users[idx] = { ...users[idx], ...updatedUser, is_first_login: false };
+      } else {
+        users.push({ ...updatedUser, is_first_login: false });
+      }
+      this.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    } finally {
+      this.isHydrating = prevHydrating;
+    }
   }
 
   public static getGames(): Game[] {
@@ -886,13 +1073,18 @@ export class ArenaStore {
     }
     try {
       const user = JSON.parse(raw) as User;
-      const freshUser = this.getUsers().find(u => u.nim === user.nim);
-      if (!freshUser) {
+      if (!user || !user.nim) {
         this.removeItem(STORAGE_KEYS.CURRENT_USER);
         return null;
       }
-      return freshUser;
+      const freshUser = this.getUsers().find(
+        (u) => u.nim.toUpperCase() === user.nim.toUpperCase()
+      );
+      // Jangan pernah menghapus CURRENT_USER hanya karena cache cp_arena_users belum terhidrasi
+      // (mencegah race-condition saat akun baru pertama kali login sebelum sync selesai)
+      return freshUser || user;
     } catch {
+      this.removeItem(STORAGE_KEYS.CURRENT_USER);
       return null;
     }
   }
@@ -928,11 +1120,24 @@ export class ArenaStore {
     return { success: true, user: found, requiresOnboarding };
   }
 
-  public static logout(): void {
+  public static logout(): Promise<void> {
     this.setCurrentUser(null);
-    if (this.isBrowser() && typeof fetch === 'function') {
-      fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+    if (!this.isBrowser() || typeof fetch !== 'function') {
+      return Promise.resolve();
     }
+    return (async () => {
+      // Tunggu antrean write-through sync selesai sebelum cookie sesi dicabut oleh server
+      await this.flushPendingSync(2500);
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+      } catch {
+        // Fallback aman saat offline
+      }
+    })();
   }
 
   // --- PASSWORD MANAGEMENT & ONBOARDING ---
@@ -1235,13 +1440,15 @@ export class ArenaStore {
   }
 
   // --- LEADERBOARD BUILDERS ---
-  public static getLeaderboardPlayers(klubFilter: KlubHari = 'KAMIS'): LeaderboardPlayer[] {
+  public static getLeaderboardPlayers(klubFilter: string = 'KAMIS'): LeaderboardPlayer[] {
     const users = this.getUsers();
     const submissions = this.getSubmissions();
 
     let filtered = users.filter(u => u.role === 'PESERTA');
     if (klubFilter !== 'ALL') {
-      filtered = filtered.filter(u => u.klub_hari === klubFilter);
+      filtered = filtered.filter(
+        u => u.id_cohort === klubFilter || u.klub_hari === klubFilter
+      );
     }
 
     const leaderboard: LeaderboardPlayer[] = filtered.map(u => {
@@ -1413,17 +1620,15 @@ export class ArenaStore {
     const games = this.getGames();
     const submissions = this.getSubmissions();
 
-    // Game yang relevan untuk user (sesuai kelasnya)
-    const userGames = games.filter(g => {
-      if (user.klub_hari === 'LOMBA') return (g.status_lomba || 'UPCOMING') !== 'UPCOMING';
-      if (user.klub_hari === 'KAMIS') return g.status_kamis !== 'UPCOMING';
-      if (user.klub_hari === 'JUMAT') return g.status_jumat !== 'UPCOMING';
-      return true;
-    });
+    // Game yang diizinkan untuk kelas/kohort user (Strict Single Source of Truth)
+    const userGames = this.getGamesForUser(user, games);
+    const allowedIds = new Set(userGames.map(g => g.id_game));
 
-    const userSubs = submissions.filter(s => s.nim === user.nim && s.status_sesi === 'DONE');
+    const userSubs = submissions.filter(
+      s => s.nim === user.nim && s.status_sesi === 'DONE' && (user.role === 'ADMIN' || allowedIds.has(s.id_game))
+    );
     const totalGamesSelesai = userSubs.length;
-    const totalGamesKelas = games.length;
+    const totalGamesKelas = userGames.length;
 
     const nilaiList = userSubs.map(s => s.nilai_akademik);
     const rataRataNilaiAkhir = nilaiList.length > 0 ? Math.round(nilaiList.reduce((a, b) => a + b, 0) / nilaiList.length) : 0;
@@ -1431,13 +1636,7 @@ export class ArenaStore {
 
     const levelInfo = calculateLevelInfo(user.total_xp);
 
-    const jadwalKlubLabel = user.klub_hari === 'KAMIS'
-      ? 'HARI KAMIS (SI C 25)'
-      : user.klub_hari === 'JUMAT'
-      ? 'HARI JUMAT (TI & SI 24-25)'
-      : user.klub_hari === 'LOMBA'
-      ? 'KELAS LOMBA & SELEKSI ICPC'
-      : 'ALL CLASS (DOSEN)';
+    const jadwalKlubLabel = this.resolveUserCohortName(user);
 
     const diagnostikStatus = rataRataNilaiAkhir >= 75
       ? '🟢 Sangat Baik'
@@ -2109,9 +2308,10 @@ export class ArenaStore {
 
     const initialStatus: GameStatus = dto.initial_status || 'UPCOMING';
     const cohortStatuses: Record<string, GameStatus> = {};
-    const allowedCohortIds = dto.allowed_cohort_ids && dto.allowed_cohort_ids.length > 0
-      ? dto.allowed_cohort_ids
-      : this.getCohorts().map(c => c.id_cohort);
+    // Murni eksplisit: jika allowed_cohort_ids kosong/tidak diisi, game berstatus Draft (0 kelas) — ZERO kebocoran
+    const allowedCohortIds = Array.isArray(dto.allowed_cohort_ids)
+      ? Array.from(new Set(dto.allowed_cohort_ids.filter(Boolean)))
+      : [];
 
     allowedCohortIds.forEach(cId => {
       cohortStatuses[cId] = initialStatus;
@@ -2142,18 +2342,20 @@ export class ArenaStore {
     games.push(newGame);
     this.saveGames(games);
 
-    // Sinkronisasikan hak akses ke tabel kohort
-    const cohorts = this.getCohorts();
-    let cohortsModified = false;
-    cohorts.forEach(c => {
-      const isTarget = allowedCohortIds.includes(c.id_cohort) || allowedCohortIds.includes(c.kode_kelas);
-      if (isTarget && !c.allowed_game_ids.includes(idGame)) {
-        c.allowed_game_ids.push(idGame);
-        cohortsModified = true;
+    // Sinkronisasikan hak akses ke tabel kohort hanya untuk kelas yang dipilih secara eksplisit
+    if (allowedCohortIds.length > 0) {
+      const cohorts = this.getCohorts();
+      let cohortsModified = false;
+      cohorts.forEach(c => {
+        const isTarget = allowedCohortIds.includes(c.id_cohort) || allowedCohortIds.includes(c.kode_kelas);
+        if (isTarget && !c.allowed_game_ids.includes(idGame)) {
+          c.allowed_game_ids.push(idGame);
+          cohortsModified = true;
+        }
+      });
+      if (cohortsModified) {
+        this.saveCohorts(cohorts);
       }
-    });
-    if (cohortsModified) {
-      this.saveCohorts(cohorts);
     }
 
     return {
@@ -2172,20 +2374,55 @@ export class ArenaStore {
     if (idx === -1) return { success: false, message: 'Game tidak ditemukan!' };
 
     const { allowed_cohort_ids, ...fieldUpdates } = updates;
-    games[idx] = { ...games[idx], ...fieldUpdates };
-    this.saveGames(games);
+    const updatedGame: Game = { ...games[idx], ...fieldUpdates };
 
-    if (allowed_cohort_ids) {
+    if (allowed_cohort_ids !== undefined) {
+      const normalizedAllowed = Array.from(new Set(allowed_cohort_ids.filter(Boolean)));
       const cohorts = this.getCohorts();
+      const nextStatuses: Record<string, GameStatus> = { ...(updatedGame.cohort_statuses || {}) };
+
       cohorts.forEach(c => {
-        const isTarget = allowed_cohort_ids.includes(c.id_cohort) || allowed_cohort_ids.includes(c.kode_kelas);
-        if (isTarget && !c.allowed_game_ids.includes(idGame)) {
-          c.allowed_game_ids.push(idGame);
-        } else if (!isTarget && c.allowed_game_ids.includes(idGame)) {
-          c.allowed_game_ids = c.allowed_game_ids.filter(id => id !== idGame);
+        const isTarget =
+          normalizedAllowed.includes(c.id_cohort) || normalizedAllowed.includes(c.kode_kelas);
+        if (isTarget) {
+          if (!c.allowed_game_ids.includes(idGame)) {
+            c.allowed_game_ids.push(idGame);
+          }
+          if (!nextStatuses[c.id_cohort]) {
+            nextStatuses[c.id_cohort] = nextStatuses[c.kode_kelas] || 'UPCOMING';
+          }
+        } else {
+          if (c.allowed_game_ids.includes(idGame)) {
+            c.allowed_game_ids = c.allowed_game_ids.filter(id => id !== idGame);
+          }
+          // Pangkas total key cohort_statuses dari kelas yang di-unassign agar tidak pernah tersisa
+          delete nextStatuses[c.id_cohort];
+          delete nextStatuses[c.kode_kelas];
         }
       });
+
+      // Bersihkan juga key usang yang tidak termasuk kelas yang diizinkan
+      const validKeys = new Set<string>();
+      cohorts.forEach(c => {
+        if (normalizedAllowed.includes(c.id_cohort) || normalizedAllowed.includes(c.kode_kelas)) {
+          validKeys.add(c.id_cohort);
+          validKeys.add(c.kode_kelas);
+        }
+      });
+      normalizedAllowed.forEach(k => validKeys.add(k));
+      Object.keys(nextStatuses).forEach(k => {
+        if (!validKeys.has(k)) {
+          delete nextStatuses[k];
+        }
+      });
+
+      updatedGame.cohort_statuses = nextStatuses;
+      games[idx] = updatedGame;
+      this.saveGames(games);
       this.saveCohorts(cohorts);
+    } else {
+      games[idx] = updatedGame;
+      this.saveGames(games);
     }
 
     return { success: true, message: `Paket Game ${idGame} berhasil diperbarui!`, game: games[idx] };
@@ -2222,8 +2459,10 @@ export class ArenaStore {
   }
 
   public static freezeCohort(cohortIdOrCode: string): void {
+    const cohort = this.getCohortById(cohortIdOrCode);
     const games = this.getGames();
     games.forEach(g => {
+      if (cohort && !cohort.allowed_game_ids.includes(g.id_game)) return;
       const current = this.getGameStatusForCohort(g, cohortIdOrCode);
       if (current === 'OPEN') {
         this.updateGameCohortStatus(g.id_game, cohortIdOrCode, 'FROZEN');
@@ -2232,8 +2471,10 @@ export class ArenaStore {
   }
 
   public static unfreezeCohort(cohortIdOrCode: string): void {
+    const cohort = this.getCohortById(cohortIdOrCode);
     const games = this.getGames();
     games.forEach(g => {
+      if (cohort && !cohort.allowed_game_ids.includes(g.id_game)) return;
       const current = this.getGameStatusForCohort(g, cohortIdOrCode);
       if (current === 'FROZEN') {
         this.updateGameCohortStatus(g.id_game, cohortIdOrCode, 'OPEN');

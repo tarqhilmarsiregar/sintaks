@@ -34,8 +34,14 @@ export default function GameCatalogGrid({
     return ArenaStore.getGameStatusForUser(game, currentUser);
   };
 
+  // Isolasi ketat paket soal sesuai kohort mahasiswa aktif
+  const cohortGames = useMemo(
+    () => ArenaStore.getGamesForUser(currentUser, games),
+    [currentUser, games]
+  );
+
   const filteredGames = useMemo(() => {
-    return games.filter((game) => {
+    return cohortGames.filter((game) => {
       // Search
       const matchesSearch =
         game.judul_game.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -62,12 +68,12 @@ export default function GameCatalogGrid({
 
       return true;
     });
-  }, [games, submissions, currentUser, searchQuery, filterStatus, filterDifficulty, filterMeeting]);
+  }, [cohortGames, submissions, currentUser, searchQuery, filterStatus, filterDifficulty, filterMeeting]);
 
   const uniqueMeetings = useMemo(() => {
-    const list = Array.from(new Set(games.map(g => g.ref_pertemuan)));
+    const list = Array.from(new Set(cohortGames.map(g => g.ref_pertemuan)));
     return list;
-  }, [games]);
+  }, [cohortGames]);
 
   return (
     <div className="space-y-5">
