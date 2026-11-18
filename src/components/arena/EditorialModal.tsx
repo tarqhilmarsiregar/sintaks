@@ -35,6 +35,27 @@ export default function EditorialModal({
   questions,
   onStartCoding,
 }: EditorialModalProps) {
+  // Seluruh hooks wajib dipanggil sebelum conditional return (React Rules of Hooks)
+  const gameQuestions = useMemo(() => {
+    if (!game) return [];
+    const raw = questions.filter((q) => q.id_game === game.id_game);
+    if (!submission?.shuffled_question_ids || submission.shuffled_question_ids.length === 0) {
+      return raw;
+    }
+    const qMap = new Map(raw.map((q) => [q.id_soal, q]));
+    const ordered: Question[] = [];
+    for (const qId of submission.shuffled_question_ids) {
+      const found = qMap.get(qId);
+      if (found) ordered.push(found);
+    }
+    for (const q of raw) {
+      if (!submission.shuffled_question_ids.includes(q.id_soal)) {
+        ordered.push(q);
+      }
+    }
+    return ordered.length === raw.length ? ordered : raw;
+  }, [questions, game, submission]);
+
   if (!isOpen || !game || !submission) return null;
 
   // Anti-Cheat Guard: Editorial hanya dapat diakses setelah sesi selesai (DONE)
@@ -60,26 +81,10 @@ export default function EditorialModal({
     );
   }
 
-  const gameQuestions = useMemo(() => {
-    if (!game) return [];
-    const raw = questions.filter((q) => q.id_game === game.id_game);
-    if (!submission?.shuffled_question_ids || submission.shuffled_question_ids.length === 0) {
-      return raw;
-    }
-    const qMap = new Map(raw.map((q) => [q.id_soal, q]));
-    const ordered: Question[] = [];
-    for (const qId of submission.shuffled_question_ids) {
-      const found = qMap.get(qId);
-      if (found) ordered.push(found);
-    }
-    for (const q of raw) {
-      if (!submission.shuffled_question_ids.includes(q.id_soal)) {
-        ordered.push(q);
-      }
-    }
-    return ordered.length === raw.length ? ordered : raw;
-  }, [questions, game, submission]);
   const matchingProblem = getCodingProblemForGame(game.id_game);
+  const nilaiMurni = submission.total_soal > 0
+    ? Math.round((submission.jumlah_benar / submission.total_soal) * 100)
+    : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in font-sans">
@@ -111,7 +116,7 @@ export default function EditorialModal({
             <div>
               <div className="text-[10px] text-slate-400 uppercase">Nilai Murni</div>
               <div className="text-xl font-bold text-white mt-0.5">
-                {Math.round((submission.jumlah_benar / submission.total_soal) * 100)}/100
+                {nilaiMurni}/100
               </div>
               <div className="text-[10px] text-slate-400">
                 {submission.jumlah_benar} dari {submission.total_soal} Benar

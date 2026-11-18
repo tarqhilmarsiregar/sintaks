@@ -1204,3 +1204,23 @@ File antarmuka: `gas/Index.html` & `public/arena.html`.
   - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
   - Automated Verification Suite: **531/531 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
   - Production Build: **PASS (Exit Code 0)** via `npx.cmd next build`.
+
+---
+
+### Bagian 49: Pre-Merge QA Hardening (Branch `fix/post-deploy-issues`) — Penutupan 9 Temuan Audit QA (3 Critical, 3 High, 2 Medium, 1 Low)
+- **Konteks:** Sebelum merge branch `fix/post-deploy-issues` ke `main`, audit QA mendalam dilakukan terhadap seluruh lapisan aplikasi (React Hooks, alur ujian live Supabase, RLS database, keamanan API, integritas data reset Admin, isolasi tim lintas kelas, serta kepatuhan Zero AI Slop).
+- **Daftar 9 Perbaikan QA yang Diterapkan:**
+  1. **`[QA-CRIT-01]` React Rules of Hooks & Zero NaN:** Memindahkan seluruh deklarasi `useState`/`useEffect`/`useMemo` ke atas conditional `return null` pada [FirstLoginOnboardingModal.tsx](file:///d:/CP-Arena/src/components/arena/FirstLoginOnboardingModal.tsx), [QuizArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/QuizArenaModal.tsx), [EditorialModal.tsx](file:///d:/CP-Arena/src/components/arena/EditorialModal.tsx) (plus guard `total_soal > 0`), dan [ProfileTab.tsx](file:///d:/CP-Arena/src/components/arena/ProfileTab.tsx).
+  2. **`[QA-CRIT-02]` Server-Authoritative Live Quiz Flow:** Menambahkan `action: 'start'` pada [src/app/api/submissions/quiz/route.ts](file:///d:/CP-Arena/src/app/api/submissions/quiz/route.ts) (beserta validasi kohort SSOT), menambahkan `ArenaStore.syncLocalSubmissionOnly()`, dan merombak `completeGame()` & `handleAnswer()` di [QuizArenaModal.tsx](file:///d:/CP-Arena/src/components/arena/QuizArenaModal.tsx) agar penilaian akhir selalu otoritatif di server Supabase tanpa pernah tertimpa `0` oleh cache lokal, disertai `isFinishingRef` dan `handleAnswerRef`.
+  3. **`[QA-CRIT-03]` Supabase Exclusive `service_role` RLS:** Mencabut `GRANT` dari `anon` & `authenticated` serta mengunci seluruh policy RLS khusus `TO service_role` di [supabase/schema.sql](file:///d:/CP-Arena/supabase/schema.sql).
+  4. **`[QA-HIGH-01]` Anti-Forge Submission Sync:** Membatasi `POST /api/arena/sync` (`entity: 'submissions'`) bagi `PESERTA` agar hanya dapat membuat sesi `ACTIVE` baru bernilai awal `0` via `createActiveSubmissionsIfAbsent` (`ignoreDuplicates: true`).
+  5. **`[QA-HIGH-02]` Anti-Zombie Submission saat Reset Admin:** Mengaktifkan `deleteMissing: true` pada `SupabaseArenaRepo.syncSubmissions()` untuk otoritas `ADMIN` sehingga submisi yang di-reset benar-benar terhapus di PostgreSQL.
+  6. **`[QA-HIGH-03]` Isolasi Tim Lintas Kelas:** `ArenaStore.createTeam()` kini menyimpan `id_cohort`, dan `joinTeamWithCode()` menolak mahasiswa dari kohort berbeda.
+  7. **`[QA-MED-01]` reCAPTCHA & Login Rate Limiter:** Menghapus fallback secret key hardcode & memblokir `demo-bypass-token` di mode produksi pada [verify-recaptcha/route.ts](file:///d:/CP-Arena/src/app/api/auth/verify-recaptcha/route.ts), serta menambahkan brute-force sliding-window rate limiter (`HTTP 429`) di [login/route.ts](file:///d:/CP-Arena/src/app/api/auth/login/route.ts).
+  8. **`[QA-MED-02]` Coding Judge Session Guard:** Melindungi [src/app/api/submissions/route.ts](file:///d:/CP-Arena/src/app/api/submissions/route.ts) dengan verifikasi `HttpOnly` cookie `cp_arena_session` (`401` bila belum login).
+  9. **`[QA-LOW-01]` Zero AI Slop Final Sweep:** Mengganti `Sparkles` -> `Zap` di [ScoreboardTable.tsx](file:///d:/CP-Arena/src/components/ScoreboardTable.tsx) dan menghapus `animate-pulse` di [VerdictBadge.tsx](file:///d:/CP-Arena/src/components/VerdictBadge.tsx).
+- **Hasil Verifikasi Mutu (QA Re-Test):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **555/555 Tests PASS (100%)** (Test Groups 1–31) via `npx.cmd tsx tests/verify-arena-system.mjs`.
+  - In-Process Security & RBAC Probes: **15/15 PASS (100%)**.
+  - Production Build: **PASS (Exit Code 0)** via `npx.cmd next build`.

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const RECAPTCHA_SECRET_KEY =
-  process.env.RECAPTCHA_SECRET_KEY || '6Le4QR8uAAAAABnLAdYmiH1hkVlOd8tI6VbpKboY';
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const token = body?.token;
+    const recaptchaSecret = (process.env.RECAPTCHA_SECRET_KEY || '').trim();
+    const isProd = process.env.NODE_ENV === 'production';
 
     if (!token) {
       return NextResponse.json(
@@ -15,19 +14,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Bypass khusus untuk akun demo
+    // Bypass demo hanya diizinkan pada lingkungan non-produksi (blokir mutlak di produksi!)
     if (token === 'demo-bypass-token') {
+      if (isProd && recaptchaSecret) {
+        return NextResponse.json(
+          { success: false, error: 'Token verifikasi reCAPTCHA tidak valid untuk lingkungan produksi.' },
+          { status: 400 }
+        );
+      }
+      if (!isProd) {
+        return NextResponse.json({
+          success: true,
+          isDemo: true,
+          message: 'Local development bypass verification successful.',
+        });
+      }
+      // Di produksi tanpa RECAPTCHA_SECRET_KEY (tidak terkonfigurasi), fail-open dengan peringatan terukur
       return NextResponse.json({
         success: true,
-        isDemo: true,
-        message: 'Demo bypass verification successful.',
+        unconfigured: true,
+        message: 'reCAPTCHA belum dikonfigurasi pada server.',
+      });
+    }
+
+    if (!recaptchaSecret) {
+      return NextResponse.json({
+        success: true,
+        unconfigured: true,
+        message: 'reCAPTCHA belum dikonfigurasi pada server.',
       });
     }
 
     // Verifikasi ke server resmi Google reCAPTCHA
     const verifyEndpoint = 'https://www.google.com/recaptcha/api/siteverify';
     const postData = new URLSearchParams();
-    postData.append('secret', RECAPTCHA_SECRET_KEY);
+    postData.append('secret', recaptchaSecret);
     postData.append('response', token);
 
     try {

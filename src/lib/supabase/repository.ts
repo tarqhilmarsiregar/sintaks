@@ -551,7 +551,10 @@ export class SupabaseArenaRepo {
     return rows.length;
   }
 
-  public static async syncSubmissions(submissions: Submission[]): Promise<number> {
+  public static async syncSubmissions(
+    submissions: Submission[],
+    options?: { deleteMissing?: boolean }
+  ): Promise<number> {
     const sb = getSupabaseAdmin();
     if (!sb) return 0;
 
@@ -563,7 +566,97 @@ export class SupabaseArenaRepo {
       if (error) throw new Error(`Gagal upsert submissions: ${error.message}`);
     }
 
+    // Jika dipanggil oleh ADMIN (misal Reset Submisi / Reset Progres), hapus baris yang telah dibuang (Anti-Zombie Submission)
+    if (options?.deleteMissing) {
+      const { data: existing } = await sb.from('submissions').select('id_submission');
+      const keepIds = new Set(submissions.map((s) => s.id_submission));
+      const toDelete = (existing || [])
+        .map((r: any) => String(r.id_submission))
+        .filter((id) => !keepIds.has(id));
+
+      if (toDelete.length > 0) {
+        const { error } = await sb.from('submissions').delete().in('id_submission', toDelete);
+        if (error) throw new Error(`Gagal menghapus submissions usang: ${error.message}`);
+      }
+    }
+
     return rows.length;
+  }
+
+  /**
+   * Anti-Cheat: Mahasiswa hanya diizinkan membuat baris sesi ACTIVE baru dengan nilai awal 0
+   * apabila id_submission belum ada di database (ignoreDuplicates: true — tidak dapat menimpa nilai/status).
+   */
+  public static async createActiveSubmissionsIfAbsent(submissions: Submission[]): Promise<number> {
+    const sb = getSupabaseAdmin();
+    if (!sb || submissions.length === 0) return 0;
+
+    const sanitizedRows = submissions.map((s) =>
+      toDbSubmissionRow({
+        ...s,
+        skor_xp: 0,
+        nilai_akademik: 0,
+        jumlah_benar: 0,
+        status_lulus: 'BELUM LULUS',
+        streak_saat_ini: 0,
+        tab_switch_count: 0,
+        tab_switch_log: [],
+        status_sesi: 'ACTIVE',
+        detail_jawaban_json: [],
+      })
+    );
+
+    const { error } = await sb
+      .from('submissions')
+      .upsert(sanitizedRows, { onConflict: 'id_submission', ignoreDuplicates: true });
+    if (error) throw new Error(`Gagal menginisialisasi sesi submisi baru: ${error.message}`);
+    return sanitizedRows.length;
+  }
+
+  public static async getSubmissionByUserAndGame(nim: string, idGame: string): Promise<Submission | null> {
+    const sb = getSupabaseAdmin();
+    if (!sb) return null;
+
+    const { data, error } = await sb
+      .from('submissions')
+      .select('*')
+      .ilike('nim', nim.trim())
+      .eq('id_game', idGame)
+      .order('timestamp_mulai', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return fromDbSubmissionRow(data);
+  }
+
+  public static async getCohortById(idCohortOrCode: string): Promise<Cohort | null> {
+    const sb = getSupabaseAdmin();
+    if (!sb || !idCohortOrCode) return null;
+
+    const { data, error } = await sb
+      .from('cohorts')
+      .select('*')
+      .or(`id_cohort.eq.${idCohortOrCode},kode_kelas.eq.${idCohortOrCode}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return fromDbCohortRow(data);
+  }
+
+  public static async getQuestionsByGameId(idGame: string): Promise<Question[]> {
+    const sb = getSupabaseAdmin();
+    if (!sb) return [];
+
+    const { data, error } = await sb
+      .from('questions')
+      .select('*')
+      .eq('id_game', idGame)
+      .order('created_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data.map(fromDbQuestionRow);
   }
 
   public static async getUserByNim(nim: string): Promise<User | null> {

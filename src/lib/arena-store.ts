@@ -536,6 +536,27 @@ export class ArenaStore {
   }
 
   /**
+   * Memperbarui satu entri submisi di cache localStorage secara sinkron dari respons server
+   * TANPA memicu write-through POST /api/arena/sync agar tidak menimpa data otoritatif Supabase.
+   */
+  public static syncLocalSubmissionOnly(sub: Submission): void {
+    const prevHydrating = this.isHydrating;
+    this.isHydrating = true;
+    try {
+      const subs = this.getSubmissions();
+      const idx = subs.findIndex((s) => s.id_submission === sub.id_submission);
+      if (idx !== -1) {
+        subs[idx] = { ...subs[idx], ...sub };
+      } else {
+        subs.push(sub);
+      }
+      this.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(subs));
+    } finally {
+      this.isHydrating = prevHydrating;
+    }
+  }
+
+  /**
    * Memperbarui cache lokal (currentUser + users) secara sinkron pasca-onboarding Supabase
    * tanpa memicu write-through POST ulang agar bebas race-condition.
    */
@@ -1952,6 +1973,7 @@ export class ArenaStore {
       id_tim: `TIM-${user.klub_hari.substring(0, 3)}-${Date.now().toString(36).toUpperCase()}`,
       nama_tim: cleanNama,
       klub_hari: user.klub_hari,
+      id_cohort: user.id_cohort,
       kode_gabung: kodeGabung,
       leader_nim: user.nim,
       daftar_nim_json: [user.nim],
@@ -2024,7 +2046,17 @@ export class ArenaStore {
       };
     }
 
-    // Cek batasan kelas kohort (kecuali user/tim bertipe ALL)
+    // Cek batasan isolasi kelas/kohort dinamis (Zero Cross-Cohort Team Join)
+    if (team.id_cohort && user.id_cohort && team.id_cohort !== user.id_cohort) {
+      const teamCohortName = this.getCohortById(team.id_cohort)?.nama_kelas || team.id_cohort;
+      const userCohortName = this.resolveUserCohortName(user);
+      return {
+        success: false,
+        message: `Tim "${team.nama_tim}" terdaftar untuk ${teamCohortName}. Anda terdaftar di ${userCohortName}.`
+      };
+    }
+
+    // Cek batasan kelas kohort legacy (kecuali user/tim bertipe ALL)
     if (team.klub_hari !== 'ALL' && user.klub_hari !== 'ALL' && team.klub_hari !== user.klub_hari) {
       return {
         success: false,

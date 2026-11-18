@@ -168,11 +168,18 @@ export async function POST(req: NextRequest) {
       case 'submissions': {
         const allSubs: Submission[] = Array.isArray(items) ? items : [];
         if (session.role === 'ADMIN') {
-          count = await SupabaseArenaRepo.syncSubmissions(allSubs);
+          // Admin berwenang menyinkronkan penuh termasuk penghapusan saat Reset Nilai/Submisi
+          count = await SupabaseArenaRepo.syncSubmissions(allSubs, { deleteMissing: true });
         } else {
-          // Isolasi kepemilikan: mahasiswa hanya boleh menyinkronkan submisi miliknya sendiri
-          const ownSubs = allSubs.filter((s) => s.nim.toUpperCase() === session.nim.toUpperCase());
-          count = await SupabaseArenaRepo.syncSubmissions(ownSubs);
+          // Anti-Cheat Strict Guard: Peserta TIDAK BOLEH memanipulasi/menimpa skor, XP, atau status DONE lewat /api/arena/sync.
+          // Hanya boleh menginisialisasi sesi ACTIVE baru miliknya sendiri (seluruh penilaian wajib lewat /api/submissions/quiz).
+          const ownNewActiveSubs = allSubs.filter(
+            (s) =>
+              s?.nim?.toUpperCase() === session.nim.toUpperCase() &&
+              s?.status_sesi === 'ACTIVE' &&
+              (!Array.isArray(s.detail_jawaban_json) || s.detail_jawaban_json.length === 0)
+          );
+          count = await SupabaseArenaRepo.createActiveSubmissionsIfAbsent(ownNewActiveSubs);
         }
         break;
       }

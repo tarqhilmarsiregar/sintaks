@@ -38,9 +38,8 @@ export default function ProfileTab({
   submissions,
   games
 }: ProfileTabProps) {
-  if (!currentUser) return null;
-
-  const [codename, setCodename] = useState(currentUser.codename);
+  // Seluruh hooks wajib dipanggil sebelum conditional return (React Rules of Hooks)
+  const [codename, setCodename] = useState(currentUser?.codename || '');
   const [successMsg, setSuccessMsg] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -52,6 +51,8 @@ export default function ProfileTab({
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState('');
   const [isChangingPass, setIsChangingPass] = useState(false);
+
+  if (!currentUser) return null;
 
   // Fallback data resolver
   const allTeams = teams || ArenaStore.getTeams();

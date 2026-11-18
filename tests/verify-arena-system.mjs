@@ -2342,6 +2342,133 @@ assert(
   'MahasiswaArenaContainer mendukung pemulihan sesi HttpOnly & await logout sebelum redirect'
 );
 
+// ============================================================================
+// TEST GROUP 31: PRE-MERGE QA HARDENING (HOOKS SAFETY, LIVE QUIZ SYNC, RLS, ANTI-CHEAT, TEAM COHORT ISOLATION)
+// ============================================================================
+console.log('\n--- [TEST GROUP 31: Pre-Merge QA Hardening — Hooks Safety, Live Quiz Sync, RLS, Anti-Cheat & Team Isolation] ---');
+
+// 31.1 QA-CRIT-01: Zero React Rules of Hooks violation (no hook called after top-level return null)
+const hookCheckedFiles = [
+  'src/components/arena/FirstLoginOnboardingModal.tsx',
+  'src/components/arena/QuizArenaModal.tsx',
+  'src/components/arena/EditorialModal.tsx',
+  'src/components/arena/ProfileTab.tsx',
+];
+for (const relPath of hookCheckedFiles) {
+  const src = fs.readFileSync(path.resolve(relPath), 'utf8');
+  const firstReturnNull = src.indexOf('return null;');
+  const afterReturnNull = firstReturnNull !== -1 ? src.slice(firstReturnNull) : '';
+  const hasHookAfterReturnNull = /\b(useState|useEffect|useMemo|useCallback|useRef)\s*\(/.test(afterReturnNull);
+  assert(!hasHookAfterReturnNull, `Rules of Hooks PASS: Tidak ada hook setelah return null di ${path.basename(relPath)}`);
+}
+const editorialSrc = fs.readFileSync(path.resolve('src/components/arena/EditorialModal.tsx'), 'utf8');
+assert(editorialSrc.includes('submission.total_soal > 0'), 'EditorialModal terlindungi dari pembagian nol (Zero NaN/100)');
+
+// 31.2 QA-CRIT-02: Server-authoritative Quiz Start/Finish & syncLocalSubmissionOnly
+const quizModalSrc = fs.readFileSync(path.resolve('src/components/arena/QuizArenaModal.tsx'), 'utf8');
+assert(quizModalSrc.includes("action: 'start'"), 'QuizArenaModal menginisialisasi sesi ACTIVE di server via /api/submissions/quiz action start');
+assert(quizModalSrc.includes('syncLocalSubmissionOnly'), 'QuizArenaModal menyinkronkan respons server tanpa menimpa DB via write-through');
+assert(quizModalSrc.includes('isFinishingRef'), 'QuizArenaModal memiliki guard anti double-finish (isFinishingRef)');
+const quizRouteSrc = fs.readFileSync(path.resolve('src/app/api/submissions/quiz/route.ts'), 'utf8');
+assert(quizRouteSrc.includes("if (action === 'start')"), '/api/submissions/quiz mendukung action start otoritatif dengan validasi kohort');
+
+// 31.3 QA-CRIT-03: Supabase RLS Exclusive service_role (Zero Anon Exposure)
+const hardenedSchemaSql = fs.readFileSync(path.resolve('supabase/schema.sql'), 'utf8');
+assert(
+  hardenedSchemaSql.includes('REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;'),
+  'schema.sql mencabut hak akses tabel langsung dari role anon & authenticated'
+);
+assert(
+  !hardenedSchemaSql.includes('TO anon, authenticated, service_role'),
+  'schema.sql tidak lagi memberikan GRANT ALL ke anon/authenticated'
+);
+assert(
+  hardenedSchemaSql.includes('FOR ALL TO service_role USING (true) WITH CHECK (true)'),
+  'Seluruh policy RLS schema.sql dikunci eksklusif untuk service_role'
+);
+
+// 31.4 QA-HIGH-01 & QA-HIGH-02: Anti-Forge Student Submission Sync & Anti-Zombie Admin Delete
+const syncRouteSrc = fs.readFileSync(path.resolve('src/app/api/arena/sync/route.ts'), 'utf8');
+assert(
+  syncRouteSrc.includes('createActiveSubmissionsIfAbsent'),
+  '/api/arena/sync memblokir manipulasi skor/XP/DONE oleh peserta lewat createActiveSubmissionsIfAbsent'
+);
+assert(
+  syncRouteSrc.includes('deleteMissing: true'),
+  '/api/arena/sync mengaktifkan deleteMissing: true untuk ADMIN (Anti-Zombie Submission)'
+);
+const repoSrc = fs.readFileSync(path.resolve('src/lib/supabase/repository.ts'), 'utf8');
+assert(
+  repoSrc.includes('ignoreDuplicates: true') && repoSrc.includes('options?.deleteMissing'),
+  'SupabaseArenaRepo menerapkan ignoreDuplicates untuk peserta dan deleteMissing untuk reset Admin'
+);
+
+// 31.5 QA-HIGH-03: Isolasi Lintas Kelas pada Pembuatan & Gabung Tim Mandiri
+const teamLeaderA = ArenaStore.createUser({
+  nim: '2699401',
+  nama_lengkap: 'Ketua Tim Kelas A',
+  role: 'PESERTA',
+  klub_hari: 'ALL',
+  id_cohort: ssotClassA.cohort.id_cohort,
+  periode: 'Genap 2026',
+});
+const teamMemberA = ArenaStore.createUser({
+  nim: '2699402',
+  nama_lengkap: 'Anggota Tim Kelas A',
+  role: 'PESERTA',
+  klub_hari: 'ALL',
+  id_cohort: ssotClassA.cohort.id_cohort,
+  periode: 'Genap 2026',
+});
+const teamOutsiderB = ArenaStore.createUser({
+  nim: '2699403',
+  nama_lengkap: 'Mahasiswa Kelas B Luar',
+  role: 'PESERTA',
+  klub_hari: 'ALL',
+  id_cohort: ssotClassB.cohort.id_cohort,
+  periode: 'Genap 2026',
+});
+const createdTeamA = ArenaStore.createTeam(teamLeaderA.user, 'Squad Alpha QA');
+assert(
+  createdTeamA.success && createdTeamA.team?.id_cohort === ssotClassA.cohort.id_cohort,
+  'createTeam menyimpan id_cohort kelas ketua tim secara akurat'
+);
+const crossCohortJoin = ArenaStore.joinTeamWithCode(teamOutsiderB.user, createdTeamA.team.kode_gabung);
+assert(
+  crossCohortJoin.success === false,
+  'Isolasi Tim Lintas Kelas: Mahasiswa Kelas B DITOLAK bergabung ke tim milik Kelas A'
+);
+const sameCohortJoin = ArenaStore.joinTeamWithCode(teamMemberA.user, createdTeamA.team.kode_gabung);
+assert(
+  sameCohortJoin.success === true,
+  'Mahasiswa sesama Kelas A berhasil bergabung ke tim menggunakan kode gabung'
+);
+
+// 31.6 QA-MED-01, QA-MED-02 & QA-LOW-01: reCAPTCHA, Login Rate Limiter, Coding Judge Auth & Zero AI Slop
+const recapRouteSrc = fs.readFileSync(path.resolve('src/app/api/auth/verify-recaptcha/route.ts'), 'utf8');
+assert(
+  !recapRouteSrc.includes('6Le4QR8uAAAAABnLAdYmiH1hkVlOd8tI6VbpKboY'),
+  'Hardcoded fallback RECAPTCHA_SECRET_KEY dihapus dari source code'
+);
+assert(
+  recapRouteSrc.includes("process.env.NODE_ENV === 'production'"),
+  'demo-bypass-token diblokir pada lingkungan produksi'
+);
+const loginRouteSrc = fs.readFileSync(path.resolve('src/app/api/auth/login/route.ts'), 'utf8');
+assert(
+  loginRouteSrc.includes('status: 429') && loginRouteSrc.includes('isRateLimited'),
+  '/api/auth/login dilengkapi proteksi brute-force rate limiter (HTTP 429)'
+);
+const judgeRouteSrc = fs.readFileSync(path.resolve('src/app/api/submissions/route.ts'), 'utf8');
+assert(
+  judgeRouteSrc.includes('verifySessionToken') && judgeRouteSrc.includes('status: 401'),
+  'POST /api/submissions dilindungi autentikasi HttpOnly session cookie (401)'
+);
+const scoreboardSrc = fs.readFileSync(path.resolve('src/components/ScoreboardTable.tsx'), 'utf8');
+const verdictSrc = fs.readFileSync(path.resolve('src/components/VerdictBadge.tsx'), 'utf8');
+assert(!scoreboardSrc.includes('Sparkles'), 'ScoreboardTable bebas dari ikon Sparkles (Zero AI Slop)');
+assert(!verdictSrc.includes('animate-pulse'), 'VerdictBadge bebas dari animasi animate-pulse (Zero AI Slop)');
+
 console.log('\n========================================================');
 console.log(`📊 Hasil Verifikasi: ${passedTests}/${totalTests} Uji Lulus (${Math.round((passedTests/totalTests)*100)}%)`);
 console.log('========================================================\n');

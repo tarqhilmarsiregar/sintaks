@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
 import ModalPortal from '@/components/common/ModalPortal';
@@ -29,14 +29,25 @@ export default function FirstLoginOnboardingModal({
   currentUser,
   onComplete,
 }: FirstLoginOnboardingModalProps) {
-  if (!isOpen || !currentUser) return null;
-
+  // Seluruh hooks wajib dipanggil sebelum conditional return (React Rules of Hooks)
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [codename, setCodename] = useState(currentUser.codename || '');
+  const [codename, setCodename] = useState(currentUser?.codename || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && currentUser) {
+      setCodename(currentUser.codename || '');
+      setNewPassword('');
+      setConfirmPassword('');
+      setErrorMessage(null);
+      setIsSubmitting(false);
+    }
+  }, [isOpen, currentUser?.nim, currentUser?.codename]);
+
+  if (!isOpen || !currentUser) return null;
 
   // Validasi Kata Sandi Real-time (Industrial Checklist)
   const isLengthValid = newPassword.trim().length >= 6;
