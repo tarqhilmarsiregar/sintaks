@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Submission, CreateUserDTO, KlubHari, UserRole, Cohort, Game } from '@/types/arena';
 import { ArenaStore } from '@/lib/arena-store';
 import { calculateLevelInfo } from '@/lib/gamification';
 import UserAvatar from '@/components/arena/UserAvatar';
 import ModalPortal from '@/components/common/ModalPortal';
+import BulkImportStudentsModal from '@/components/admin/modals/BulkImportStudentsModal';
 import {
   GraduationCap,
   RotateCcw,
@@ -23,6 +24,8 @@ import {
   BookOpen,
   Check,
   Settings,
+  FileSpreadsheet,
+  KeyRound,
 } from 'lucide-react';
 
 const ALL_GAME_PACKAGES = [
@@ -39,6 +42,7 @@ interface AdminStudentMonitorTabProps {
   users: User[];
   submissions: Submission[];
   games?: Game[];
+  cohorts?: Cohort[];
   onResetStudent: (nim: string) => void;
   onResetStudentGame?: (nim: string, idGame: string) => { success: boolean; message: string };
   onUpdateStudentProgress?: (
@@ -46,6 +50,13 @@ interface AdminStudentMonitorTabProps {
     payload: { total_xp?: number; grades: { id_game: string; nilai_akademik: number; skor_xp: number }[] }
   ) => { success: boolean; message: string };
   onAddUser: (dto: CreateUserDTO) => { success: boolean; message: string; user?: User };
+  onBulkAddUsers?: (dtos: CreateUserDTO[]) => {
+    success: boolean;
+    message: string;
+    createdCount: number;
+    skippedCount: number;
+  };
+  onAdminResetPassword?: (nim: string) => Promise<{ success: boolean; message: string }>;
   onDeleteUser: (nim: string) => void;
 }
 
@@ -53,17 +64,33 @@ export default function AdminStudentMonitorTab({
   users,
   submissions,
   games,
+  cohorts: propCohorts,
   onResetStudent,
   onResetStudentGame,
   onUpdateStudentProgress,
   onAddUser,
+  onBulkAddUsers,
+  onAdminResetPassword,
   onDeleteUser,
 }: AdminStudentMonitorTabProps) {
   const [classFilter, setClassFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Cohorts & Dynamic Class State
-  const [cohorts, setCohorts] = useState<Cohort[]>(() => ArenaStore.getCohorts());
+  // Cohorts & Dynamic Class State (sinkron dengan hidrasi Supabase)
+  const [cohorts, setCohorts] = useState<Cohort[]>(() =>
+    propCohorts && propCohorts.length > 0 ? propCohorts : ArenaStore.getCohorts()
+  );
+
+  useEffect(() => {
+    if (propCohorts) {
+      setCohorts(propCohorts);
+    }
+  }, [propCohorts]);
+
+  // Bulk Import & Admin Password Reset Modal States
+  const [showBulkImportModal, setShowBulkImportModal] = useState(false);
+  const [isConfirmingPasswordReset, setIsConfirmingPasswordReset] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [showCohortModal, setShowCohortModal] = useState(false);
   const [cohortNama, setCohortNama] = useState('');
   const [cohortKode, setCohortKode] = useState('');
@@ -350,7 +377,7 @@ export default function AdminStudentMonitorTab({
           </p>
         </div>
 
-        {/* Action Buttons: Buat Kelas & Tambah Akun Baru */}
+        {/* Action Buttons: Buat Kelas, Import CSV/Excel & Tambah Akun Baru */}
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs shrink-0">
           <button
             onClick={() => {
@@ -362,6 +389,14 @@ export default function AdminStudentMonitorTab({
           >
             <Layers className="w-4 h-4 text-blue-400" />
             <span>+ Buat Kelas / Kohort</span>
+          </button>
+
+          <button
+            onClick={() => setShowBulkImportModal(true)}
+            className="px-3.5 py-2 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] text-slate-200 hover:text-white font-bold shadow-sm transition-colors flex items-center gap-2"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Import CSV / Excel</span>
           </button>
 
           <button
@@ -1314,17 +1349,29 @@ export default function AdminStudentMonitorTab({
                   </div>
                 )}
 
-                {/* Modal Footer: Reset Keseluruhan (Kiri) & Simpan Perubahan (Kanan) */}
+                {/* Modal Footer: Reset Sandi & Reset Progres (Kiri) + Simpan Perubahan (Kanan) */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[#1e293b]">
-                  <button
-                    type="button"
-                    onClick={() => setIsConfirmingFullReset(true)}
-                    className="w-full sm:w-auto px-3.5 py-2 rounded-lg bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/30 text-rose-300 hover:text-white font-bold transition-colors flex items-center justify-center gap-1.5"
-                    title="Hapus seluruh submisi dan reset XP mahasiswa ke 0"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset Seluruh Progres</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingPasswordReset(true)}
+                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-amber-950/30 hover:bg-amber-900/50 border border-amber-500/30 text-amber-300 hover:text-white font-bold transition-colors flex items-center justify-center gap-1.5"
+                      title="Reset kata sandi mahasiswa kembali ke NIM bawaan"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Reset Sandi ke NIM</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingFullReset(true)}
+                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/30 text-rose-300 hover:text-white font-bold transition-colors flex items-center justify-center gap-1.5"
+                      title="Hapus seluruh submisi dan reset XP mahasiswa ke 0"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset Progres</span>
+                    </button>
+                  </div>
 
                   <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                     <button
@@ -1553,6 +1600,92 @@ export default function AdminStudentMonitorTab({
           </div>
         </ModalPortal>
       )}
+
+      {/* 9. MODAL KONFIRMASI RESET KATA SANDI MAHASISWA KE NIM (ZERO AI SLOP) */}
+      {isConfirmingPasswordReset && managingStudent && (
+        <ModalPortal>
+          <div
+            className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-in fade-in duration-150"
+            onClick={() => !isResettingPassword && setIsConfirmingPasswordReset(false)}
+          >
+            <div
+              className="bg-[#0c1222] border border-amber-500/35 rounded-2xl w-full max-w-md shadow-2xl p-5 sm:p-6 text-xs font-mono"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3.5 pb-4 border-b border-[#1e293b]">
+                <div className="w-10 h-10 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0">
+                  <KeyRound className="w-5 h-5 text-amber-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    Reset Kata Sandi ke NIM?
+                  </h3>
+                  <p className="text-slate-400 text-xs mt-0.5">
+                    Mahasiswa: <strong className="text-white">{managingStudent.nama_lengkap}</strong> ({managingStudent.nim})
+                  </p>
+                </div>
+              </div>
+
+              <div className="my-4 p-3 rounded-lg bg-[#070b14] border border-[#1e293b] text-slate-300 text-xs leading-relaxed space-y-1.5">
+                <p>
+                  Kata sandi mahasiswa akan dikembalikan ke NIM (<strong className="text-amber-300">{managingStudent.nim}</strong>).
+                </p>
+                <p className="text-slate-400">
+                  Status akun otomatis disetel ulang agar mahasiswa wajib menetapkan kata sandi pribadi baru pada login berikutnya.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#1e293b]">
+                <button
+                  type="button"
+                  disabled={isResettingPassword}
+                  onClick={() => setIsConfirmingPasswordReset(false)}
+                  className="px-4 py-2 rounded-lg bg-[#111827] hover:bg-[#18233c] border border-[#1e293b] text-slate-300 font-bold transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={isResettingPassword}
+                  onClick={async () => {
+                    setIsResettingPassword(true);
+                    setManageModalError('');
+                    setManageModalSuccess('');
+                    const res = onAdminResetPassword
+                      ? await onAdminResetPassword(managingStudent.nim)
+                      : ArenaStore.adminResetPassword(managingStudent.nim);
+                    setIsResettingPassword(false);
+                    setIsConfirmingPasswordReset(false);
+                    if (res.success) {
+                      setManageModalSuccess(res.message);
+                    } else {
+                      setManageModalError(res.message);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>{isResettingPassword ? 'Mereset...' : 'Ya, Reset ke NIM'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* 10. MODAL IMPORT MASSAL MAHASISWA (CSV / EXCEL) */}
+      <BulkImportStudentsModal
+        isOpen={showBulkImportModal}
+        onClose={() => setShowBulkImportModal(false)}
+        cohorts={cohorts}
+        existingUsers={users}
+        onBulkImport={(dtos) => {
+          if (onBulkAddUsers) {
+            return onBulkAddUsers(dtos);
+          }
+          return ArenaStore.bulkCreateUsers(dtos);
+        }}
+      />
     </div>
   );
 }

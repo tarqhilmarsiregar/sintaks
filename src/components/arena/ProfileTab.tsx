@@ -126,40 +126,47 @@ export default function ProfileTab({
 
     setIsChangingPass(true);
     try {
-      const res = await fetch('/api/auth/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'change',
-          nim: currentUser.nim,
-          oldPassword: oldPassword.trim(),
-          newPassword: newPassword.trim(),
-        }),
-      });
+      let handledViaSupabase = false;
+      try {
+        const res = await fetch('/api/auth/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'change',
+            nim: currentUser.nim,
+            oldPassword: oldPassword.trim(),
+            newPassword: newPassword.trim(),
+          }),
+        });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setPassError(data.error || 'Gagal memperbarui kata sandi.');
-        setIsChangingPass(false);
-        return;
+        const data = await res.json();
+        if (data?.mode === 'supabase') {
+          handledViaSupabase = true;
+          if (!res.ok || !data.success) {
+            setPassError(data.error || 'Gagal memperbarui kata sandi di database.');
+            return;
+          }
+          setPassSuccess('Kata sandi berhasil diperbarui dengan aman di database!');
+          setOldPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setTimeout(() => setPassSuccess(''), 4000);
+        }
+      } catch {
+        // Fallback ke penyimpanan lokal
       }
 
-      setPassSuccess('Kata sandi berhasil diperbarui dengan aman!');
-      setOldPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setTimeout(() => setPassSuccess(''), 4000);
-    } catch {
-      // Fallback local store
-      const localRes = ArenaStore.changePassword(currentUser.nim, oldPassword, newPassword);
-      if (localRes.success) {
-        setPassSuccess('Kata sandi berhasil diperbarui dengan aman!');
-        setOldPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        setTimeout(() => setPassSuccess(''), 4000);
-      } else {
-        setPassError(localRes.message);
+      if (!handledViaSupabase) {
+        const localRes = ArenaStore.changePassword(currentUser.nim, oldPassword, newPassword);
+        if (localRes.success) {
+          setPassSuccess('Kata sandi berhasil diperbarui dengan aman!');
+          setOldPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setTimeout(() => setPassSuccess(''), 4000);
+        } else {
+          setPassError(localRes.message);
+        }
       }
     } finally {
       setIsChangingPass(false);

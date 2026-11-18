@@ -49,7 +49,7 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
     setCohorts(ArenaStore.getCohorts());
   }, []);
 
-  // Guard autentikasi & RBAC
+  // Guard autentikasi & RBAC + Hidrasi Live Supabase
   useEffect(() => {
     const user = ArenaStore.getCurrentUser();
     if (!user) {
@@ -62,6 +62,13 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
     }
     refreshData();
     setIsCheckingAuth(false);
+
+    // Sinkronisasi state terbaru dari Supabase PostgreSQL (non-blocking)
+    ArenaStore.hydrateFromServer({ role: 'ADMIN', nim: user.nim }).then((res) => {
+      if (res.synced) {
+        refreshData();
+      }
+    });
   }, [router, refreshData]);
 
   const showAlert = (text: string, type: 'success' | 'error' = 'success') => {
@@ -248,9 +255,56 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
     return res;
   };
 
-  // --- STUDENT RESET & PROGRESS MANAGEMENT ---
+  // --- STUDENT RESET, BULK IMPORT & PROGRESS MANAGEMENT ---
+  const handleBulkCreateUsers = (dtos: CreateUserDTO[]) => {
+    const res = ArenaStore.bulkCreateUsers(dtos);
+    if (res.success) {
+      refreshData();
+      showAlert(res.message, 'success');
+    } else {
+      showAlert(res.message, 'error');
+    }
+    return res;
+  };
+
+  const handleAdminResetPassword = async (nim: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          action: 'admin-reset',
+          nim,
+        }),
+      });
+      const data = await res.json();
+      if (data?.mode === 'supabase') {
+        if (res.ok && data.success) {
+          ArenaStore.adminResetPassword(nim);
+          refreshData();
+          showAlert(data.message || `Kata sandi ${nim} berhasil direset ke NIM.`, 'success');
+          return { success: true, message: data.message };
+        }
+        const errMsg = data.error || 'Gagal mereset kata sandi di database.';
+        showAlert(errMsg, 'error');
+        return { success: false, message: errMsg };
+      }
+    } catch {
+      // Fallback ke local store
+    }
+
+    const localRes = ArenaStore.adminResetPassword(nim);
+    if (localRes.success) {
+      refreshData();
+      showAlert(localRes.message, 'success');
+    } else {
+      showAlert(localRes.message, 'error');
+    }
+    return { success: localRes.success, message: localRes.message };
+  };
+
   const handleResetStudent = (nim: string) => {
-    if (!confirm(`Reset seluruh riwayat submisi dan skor XP untuk mahasiswa NIM ${nim}?`)) return;
     ArenaStore.resetUserProgress(nim);
     refreshData();
     showAlert(`Seluruh progres mahasiswa ${nim} berhasil di-reset.`);
@@ -435,10 +489,13 @@ export default function AdminCommandCenterContainer({ activeAdminTab }: AdminCom
               users={users}
               submissions={submissions}
               games={games}
+              cohorts={cohorts}
               onResetStudent={handleResetStudent}
               onResetStudentGame={handleResetStudentGame}
               onUpdateStudentProgress={handleUpdateStudentProgress}
               onAddUser={handleCreateUser}
+              onBulkAddUsers={handleBulkCreateUsers}
+              onAdminResetPassword={handleAdminResetPassword}
               onDeleteUser={handleDeleteUser}
             />
           )}

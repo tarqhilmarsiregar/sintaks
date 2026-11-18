@@ -1027,3 +1027,125 @@ File antarmuka: `gas/Index.html` & `public/arena.html`.
 - **Hasil Verifikasi Mutu (QA):**
   - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
   - Automated Verification Suite: **408/408 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 43: Integrasi Persistensi Supabase Live, Repository Layer & Multi-Device State Sync (/api/arena/sync)
+- **Konteks & Kebutuhan Rekayasa (Opsi 1):**
+  - Mengubah aplikasi dari penyimpanan lokal tunggal (`localStorage`) menjadi arsitektur **Multi-Device Live Persistence** yang terhubung langsung ke PostgreSQL Supabase, dengan *resilient offline/local fallback* saat kredensial belum dikonfigurasi.
+  - Memastikan seluruh aksi CRUD Admin (pembuatan kohort, pendaftaran mahasiswa, paket game, soal, tim snake-draft) dan aksi Mahasiswa (login, onboarding ganti sandi, submisi kuis, penalti tab switch) langsung tersinkronisasi lintas perangkat secara konsisten.
+  - Melindungi keamanan data saat hidrasi state mahasiswa (`Zero Password Exposure` dan `Zero Answer Leakage`).
+- **Implementasi Multi-Perspektif:**
+  - **Database & Schema Alignment:**
+    - [supabase/schema.sql](file:///d:/CP-Arena/supabase/schema.sql):
+      - Menambahkan kolom `allowed_game_ids JSONB NOT NULL DEFAULT '[]'::JSONB` pada tabel `cohorts`.
+      - Menambahkan kolom `is_first_login BOOLEAN NOT NULL DEFAULT TRUE` dan `password_changed_at TIMESTAMPTZ` pada tabel `users` (dengan nilai eksplisit `FALSE` untuk akun root `ADMIN` dan `DOSEN001`).
+  - **Backend & Repository Engineering:**
+    - [src/lib/supabase/admin.ts](file:///d:/CP-Arena/src/lib/supabase/admin.ts):
+      - Utilitas `isSupabaseConfigured()` (deteksi aman terhadap placeholder URL/key) dan singleton server-side client `getSupabaseAdmin()` berbasis `SUPABASE_SERVICE_ROLE_KEY`.
+    - [src/lib/supabase/repository.ts](file:///d:/CP-Arena/src/lib/supabase/repository.ts):
+      - Pure Row Mappers dua arah (`toDb*Row` / `fromDb*Row`) untuk 6 entitas utama dengan sanitasi foreign key PostgreSQL (`"" -> null`) serta perlindungan agar sync client tidak menimpa password asli atau kunci jawaban di database.
+      - Fungsi `sanitizeDatasetForStudent()` yang men-strip seluruh password user dan men-strip `kunci_jawaban` + `editorial` untuk game yang belum berstatus `DONE`.
+      - Kelas `SupabaseArenaRepo` yang menangani `fetchAllState`, diff-aware `sync*` (upsert + delete), `authenticateUser`, `updateUserCredentials`, dan transaksi submisi kuis.
+    - [src/app/api/arena/sync/route.ts](file:///d:/CP-Arena/src/app/api/arena/sync/route.ts):
+      - Endpoint REST `GET /api/arena/sync` (hidrasi state live) dan `POST /api/arena/sync` (write-through persistensi per-entitas).
+    - [src/app/api/auth/login/route.ts](file:///d:/CP-Arena/src/app/api/auth/login/route.ts), [src/app/api/auth/password/route.ts](file:///d:/CP-Arena/src/app/api/auth/password/route.ts), & [src/app/api/submissions/quiz/route.ts](file:///d:/CP-Arena/src/app/api/submissions/quiz/route.ts):
+      - Seluruh endpoint ditingkatkan agar membaca/menulis langsung ke Supabase PostgreSQL saat terkonfigurasi, dengan fallback mulus ke `ArenaStore` lokal saat mode offline.
+  - **Frontend State Synchronization:**
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - Menambahkan `hydrateFromServer()`, `getSyncStatus()`, dan non-blocking write-through dispatcher `pushEntityToServer()` pada seluruh mutasi penyimpanan.
+    - [src/app/login/page.tsx](file:///d:/CP-Arena/src/app/login/page.tsx), [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx), [src/components/arena/MahasiswaArenaContainer.tsx](file:///d:/CP-Arena/src/components/arena/MahasiswaArenaContainer.tsx), [src/components/arena/FirstLoginOnboardingModal.tsx](file:///d:/CP-Arena/src/components/arena/FirstLoginOnboardingModal.tsx), & [src/components/arena/ProfileTab.tsx](file:///d:/CP-Arena/src/components/arena/ProfileTab.tsx):
+      - Menghubungkan autentikasi live, hidrasi otomatis saat mount & refresh, serta perbaikan guard onboarding agar tetap akurat saat password di-strip demi keamanan.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 26 (Supabase Live Persistence, Row Mappers & Multi-Device Sync Safety)** dengan 28 assertions baru mencakup deteksi env, validasi kolom baru di SQL, round-trip seluruh row mapper, sanitasi FK `null`, proteksi password eksisting, serta sanitasi anti-leakage payload mahasiswa.
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **436/436 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 44: Security Auth Hardening — Salted scrypt Password Hashing, Signed HttpOnly Session Cookie & Server-Side RBAC Middleware (Opsi 2)
+- **Konteks & Kebutuhan Rekayasa (Opsi 2):**
+  - Menutup total celah keamanan produksi yang teridentifikasi pada uji live Supabase:
+    1. Password sebelumnya disimpan dan dapat terbaca plain-text jika endpoint sinkronisasi diakses langsung.
+    2. Endpoint `/api/arena/sync` sebelumnya menerima parameter query `?role=ADMIN` dari client tanpa verifikasi sesi kriptografis.
+    3. Proteksi rute `/admin/*` sebelumnya hanya dijalankan di sisi client (`useEffect`), bukan di level server middleware.
+  - Menjamin kompatibilitas mulus dengan akun eksisting di Supabase (`ADMIN` & `2244090`) melalui mekanisme *lazy migration* otomatis saat login pertama.
+- **Implementasi Multi-Perspektif:**
+  - **Cryptography & Session Engineering:**
+    - [src/lib/security/password.ts](file:///d:/CP-Arena/src/lib/security/password.ts):
+      - `hashPassword()`: Enkripsi kata sandi menggunakan `crypto.scryptSync` dengan 16-byte random salt per akun (`scrypt$<salt>$<key>`).
+      - `verifyPassword()`: Pembandingan konstan-waktu (`crypto.timingSafeEqual`) untuk mencegah *timing attack*, sekaligus mendeteksi akun legacy plain-text (`needsRehash: true`) agar di-upgrade otomatis di PostgreSQL saat login berhasil.
+    - [src/lib/security/session.ts](file:///d:/CP-Arena/src/lib/security/session.ts):
+      - `signSessionToken()` & `verifySessionToken()`: Token sesi bertanda tangan **HMAC-SHA256** berbasis Web Crypto API (`crypto.subtle`) sehingga kompatibel penuh di **Next.js Edge Middleware** maupun **Node.js API Routes**.
+      - Cookie `cp_arena_session` dengan flag ketat `httpOnly: true`, `sameSite: 'lax'`, dan `secure` pada lingkungan produksi.
+  - **Server-Side RBAC & API Protection:**
+    - [src/middleware.ts](file:///d:/CP-Arena/src/middleware.ts):
+      - Middleware Edge untuk rute `/admin/:path*` dan `/mahasiswa/:path*`: menolak akses tanpa sesi `HttpOnly` valid pada mode Supabase Live (redirect ke `/login?reason=auth_required`) serta mengalihkan `PESERTA` yang mencoba menembus `/admin/*` langsung ke `/mahasiswa/dashboard`.
+    - [src/app/api/auth/login/route.ts](file:///d:/CP-Arena/src/app/api/auth/login/route.ts), [src/app/api/auth/logout/route.ts](file:///d:/CP-Arena/src/app/api/auth/logout/route.ts), & [src/app/api/auth/session/route.ts](file:///d:/CP-Arena/src/app/api/auth/session/route.ts):
+      - Manajemen siklus penuh cookie `HttpOnly` (`cp_arena_session`) dan pembersihan otomatis cookie legacy `cp_arena_user`.
+    - [src/app/api/arena/sync/route.ts](file:///d:/CP-Arena/src/app/api/arena/sync/route.ts):
+      - Mengabaikan total parameter `?role=` dari URL; menolak akses tanpa sesi (`401 Unauthorized`); menerapkan RBAC ketat per-entitas (entitas `cohorts`, `games`, `questions`, `reset-all` terkunci khusus `ADMIN` dengan `403 Forbidden`, sementara `PESERTA` hanya dapat memperbarui profil/tim/submisi miliknya secara non-destruktif).
+    - [src/app/api/auth/password/route.ts](file:///d:/CP-Arena/src/app/api/auth/password/route.ts) & [src/app/api/submissions/quiz/route.ts](file:///d:/CP-Arena/src/app/api/submissions/quiz/route.ts):
+      - Verifikasi kepemilikan sesi (*horizontal privilege escalation guard*) sehingga mahasiswa tidak dapat mengubah kata sandi atau memanipulasi submisi mahasiswa lain.
+    - [src/lib/supabase/repository.ts](file:///d:/CP-Arena/src/lib/supabase/repository.ts):
+      - Auto-hashing pada `toDbUserRow()`, lazy-upgrade pada `authenticateUser()`, dan strip total field `password` pada `fetchAllState()` (Zero Password Exposure untuk semua role termasuk `ADMIN`).
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 27 (Security Auth Hardening)** dengan 21 assertions baru (salted scrypt hashing, lazy migration, anti-tampering role spoofing token, expired token rejection, HttpOnly cookie flags, serta keberadaan middleware & anti-spoofing sync route).
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **457/457 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 45: Efisiensi Operasional Dosen — Bulk Import Mahasiswa (CSV/Excel) & Admin Password Reset (Opsi 3)
+- **Konteks & Kebutuhan Rekayasa (Opsi 3):**
+  - Mempercepat pendaftaran massal puluhan hingga ratusan mahasiswa per semester dari berkas CSV maupun spreadsheet Excel (`.xlsx`/`.xls`) atau tempel langsung (*paste*) dari SIAKAD/Excel tanpa perlu input manual satu per satu.
+  - Menyediakan fitur **"Reset Sandi ke NIM"** bagi dosen/admin untuk membantu mahasiswa yang lupa kata sandi pribadinya pasca-onboarding, dengan otorisasi ketat khusus `ADMIN` dan dialog konfirmasi Industrial Dark (Zero AI Slop).
+- **Implementasi Multi-Perspektif:**
+  - **Software Engineering (Pure Parser & Validation Service):**
+    - [src/lib/student-import-service.ts](file:///d:/CP-Arena/src/lib/student-import-service.ts):
+      - `detectCsvDelimiter()` & `parseRawCsvText()`: Mendukung otomatis delimiter koma (`,`) dan titik koma (`;` Excel Indonesia), pembersihan UTF-8 BOM (`\uFEFF`), serta parsing RFC 4180 field berkoma dalam tanda kutip.
+      - `validateImportedStudentRows()`: Memvalidasi setiap baris secara terperinci (deteksi kolom wajib kosong, format NIM, duplikat NIM internal dalam file, serta NIM yang sudah terdaftar di database).
+      - `buildBulkCreateUserDTOs()` & `downloadStudentImportTemplate()`: Konversi baris valid ke DTO batch terikat kohort tujuan, plus generator template `.csv` resmi ber-BOM UTF-8.
+  - **Backend & Persistence Engineering:**
+    - [src/lib/arena-store.ts](file:///d:/CP-Arena/src/lib/arena-store.ts):
+      - Menambahkan `bulkCreateUsers(dtos)`: Pendaftaran atomik 1x write-through sync ke `localStorage` dan Supabase PostgreSQL dengan monogram inisial otomatis dan `is_first_login: true`.
+      - Menambahkan `adminResetPassword(nim)`: Mengembalikan kata sandi mahasiswa ke NIM dan memicu ulang wajib onboarding saat login berikutnya.
+    - [src/lib/supabase/repository.ts](file:///d:/CP-Arena/src/lib/supabase/repository.ts) & [src/app/api/auth/password/route.ts](file:///d:/CP-Arena/src/app/api/auth/password/route.ts):
+      - Menambahkan `SupabaseArenaRepo.adminResetUserPassword(nim)` dan aksi `action: 'admin-reset'` yang terkunci ketat khusus sesi `ADMIN` (`403 Forbidden` untuk non-admin), langsung meng-hash ulang NIM via `scrypt` di PostgreSQL.
+  - **Frontend & UI/UX Designer (Zero AI Slop):**
+    - [src/components/admin/modals/BulkImportStudentsModal.tsx](file:///d:/CP-Arena/src/components/admin/modals/BulkImportStudentsModal.tsx):
+      - Modal Industrial Dark berbasis `ModalPortal` dengan pemilih kohort tujuan, tombol unduh template CSV, tab **Unggah File (`.csv`/`.xlsx`)** dan **Tempel Teks CSV**, 4 KPI ringkasan validasi, serta tabel pratinjau per-baris sebelum eksekusi impor.
+    - [src/components/admin/tabs/AdminStudentMonitorTab.tsx](file:///d:/CP-Arena/src/components/admin/tabs/AdminStudentMonitorTab.tsx) & [src/components/admin/AdminCommandCenterContainer.tsx](file:///d:/CP-Arena/src/components/admin/AdminCommandCenterContainer.tsx):
+      - Menambahkan tombol `Import CSV / Excel` pada toolbar utama, menyinkronkan `cohorts` dari hidrasi Supabase, menghapus sisa native `confirm()` pada `handleResetStudent`, serta menambahkan tombol `Reset Sandi ke NIM` lengkap dengan dialog konfirmasi khusus pada modal kelola mahasiswa.
+  - **Quality Assurance & Control (QA/QC):**
+    - [tests/verify-arena-system.mjs](file:///d:/CP-Arena/tests/verify-arena-system.mjs):
+      - Menambahkan **Test Group 28 (Bulk Student Import & Admin Password Reset)** dengan 27 assertions baru (deteksi delimiter, BOM & RFC 4180 quotes, deteksi duplikat internal & DB, eksekusi atomik `bulkCreateUsers`, idempotensi anti-duplikat, reset password Admin + pemicu ulang onboarding, template CSV, dan proteksi RBAC `admin-reset`).
+- **Hasil Verifikasi Mutu (QA):**
+  - TypeScript Compilation: **0 Error (Clean)** via `npx.cmd tsc --noEmit`.
+  - Automated Verification Suite: **484/484 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.
+
+---
+
+### Bagian 46: Production Build Audit (`next build`), HTTP Security Headers & Vercel Deployment Readiness (Opsi 4)
+- **Konteks & Kebutuhan Rekayasa (Opsi 4):**
+  - Memastikan seluruh rute App Router, API Endpoints, dan Edge Middleware terkompilasi bersih untuk produksi (`next build`) dengan 0 error TypeScript, 0 error ESLint, dan 0 error prerendering.
+  - Menambahkan HTTP Security Headers produksi dan membersihkan sisa secret key pada `.env.example` demi kesiapan rilis ke Vercel.
+- **Implementasi & Audit:**
+  - **[next.config.mjs](file:///d:/CP-Arena/next.config.mjs):**
+    - Menonaktifkan `X-Powered-By` (`poweredByHeader: false`).
+    - Mengonfigurasi HTTP Security Headers global: `X-Frame-Options: DENY` (anti-clickjacking), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, dan `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
+  - **[.env.example](file:///d:/CP-Arena/.env.example):**
+    - Menyertakan `SESSION_SECRET` dan mengganti kunci contoh reCAPTCHA dengan placeholder aman.
+  - **Hasil Production Build (`npx.cmd next build`):**
+    - Compiled successfully in `7.9s` (Next.js `15.5.29`).
+    - Linting & Type Validation: **0 Error**.
+    - Static Prerendering: **19/19 halaman PASS**.
+    - Edge Middleware (`src/middleware.ts`): **34.7 kB (Clean)**.
+    - Seluruh 7 API Routes (`/api/arena/sync`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/password`, `/api/auth/session`, `/api/auth/verify-recaptcha`, `/api/submissions`, `/api/submissions/quiz`) terkompilasi bersih.
+- **Hasil Verifikasi Mutu (QA):**
+  - Production Build: **PASS (Exit Code 0)** via `npx.cmd next build`.
+  - Automated Verification Suite: **484/484 Tests PASS (100%)** via `npx.cmd tsx tests/verify-arena-system.mjs`.

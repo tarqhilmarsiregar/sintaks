@@ -53,8 +53,9 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
 
     // Cek apakah mahasiswa wajib onboarding (ganti password perdana)
     if (user.role === 'PESERTA') {
-      const isDefaultPass = !user.password || user.password === user.nim;
-      const needsOnboard = isDefaultPass || user.is_first_login !== false;
+      const hasChangedPassword = user.is_first_login === false || Boolean(user.password_changed_at);
+      const isExplicitDefaultPass = Boolean(user.password) && user.password === user.nim;
+      const needsOnboard = !hasChangedPassword || isExplicitDefaultPass;
       setIsOnboardingModalOpen(needsOnboard);
     } else {
       setIsOnboardingModalOpen(false);
@@ -77,7 +78,7 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
     setLeaderboardPlayers(ArenaStore.getLeaderboardPlayers(filter));
   }, []);
 
-  // Route Guard: Pastikan sesi aktif
+  // Route Guard: Pastikan sesi aktif + Hidrasi Live Supabase
   useEffect(() => {
     const user = ArenaStore.getCurrentUser();
     if (!user) {
@@ -86,6 +87,14 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
     }
     loadAllData(user);
     setIsCheckingAuth(false);
+
+    // Sinkronisasi state terbaru dari Supabase PostgreSQL (non-blocking)
+    ArenaStore.hydrateFromServer({ role: user.role, nim: user.nim }).then((res) => {
+      if (res.synced) {
+        const freshUser = ArenaStore.getCurrentUser() || user;
+        loadAllData(freshUser);
+      }
+    });
   }, [router, loadAllData]);
 
   // Handle Dynamic URL Navigation
@@ -95,13 +104,17 @@ export default function MahasiswaArenaContainer({ activeMenu }: MahasiswaArenaCo
   };
 
   // Handle Refresh
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
+    const user = ArenaStore.getCurrentUser();
+    if (user) {
+      await ArenaStore.hydrateFromServer({ role: user.role, nim: user.nim });
+      const freshUser = ArenaStore.getCurrentUser() || user;
+      loadAllData(freshUser);
+    }
     setTimeout(() => {
-      const user = ArenaStore.getCurrentUser();
-      if (user) loadAllData(user);
       setIsRefreshing(false);
-    }, 400);
+    }, 300);
   };
 
   // Handle Logout

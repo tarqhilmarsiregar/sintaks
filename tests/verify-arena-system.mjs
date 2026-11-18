@@ -11,6 +11,38 @@ import { ICPC_PROBLEMS_DEF } from '../src/types/arena.ts';
 import { seededShuffle, stringToSeed } from '../src/lib/shuffle.ts';
 import { parseMathSegments, formatMathString, SYMBOL_MAP } from '../src/lib/math-parser.ts';
 import { generateAcademicExportData } from '../src/lib/export-service.ts';
+import { isSupabaseConfigured } from '../src/lib/supabase/admin.ts';
+import {
+  toDbCohortRow,
+  fromDbCohortRow,
+  toDbTeamRow,
+  fromDbTeamRow,
+  toDbUserRow,
+  fromDbUserRow,
+  toDbGameRow,
+  fromDbGameRow,
+  toDbSubmissionRow,
+  fromDbSubmissionRow,
+  sanitizeDatasetForStudent
+} from '../src/lib/supabase/repository.ts';
+import {
+  hashPassword,
+  verifyPassword,
+  isPasswordHashed
+} from '../src/lib/security/password.ts';
+import {
+  signSessionToken,
+  verifySessionToken,
+  getSessionCookieOptions,
+  SESSION_COOKIE_NAME
+} from '../src/lib/security/session.ts';
+import {
+  detectCsvDelimiter,
+  parseRawCsvText,
+  validateImportedStudentRows,
+  buildBulkCreateUserDTOs,
+  generateStudentImportTemplateCsv
+} from '../src/lib/student-import-service.ts';
 import fs from 'fs';
 import path from 'path';
 
@@ -1642,6 +1674,315 @@ assert(onboardRes.user?.is_first_login === false, 'is_first_login berganti false
 const adminLoginRes = ArenaStore.login('ADMIN', 'ADMIN');
 assert(adminLoginRes.success === true, 'Login root ADMIN berhasil');
 assert(adminLoginRes.requiresOnboarding === false, 'Root ADMIN tidak diarahkan ke onboarding mahasiswa');
+
+// ========================================================
+// TEST GROUP 26: Supabase Live Persistence, Row Mappers & Multi-Device Sync Safety
+// ========================================================
+console.log('\n--- [TEST GROUP 26: Supabase Live Persistence, Row Mappers & Multi-Device Sync Safety] ---');
+
+// 26.1 Deteksi Konfigurasi Environment Supabase (Safe Placeholder Guard)
+assert(typeof isSupabaseConfigured() === 'boolean', 'isSupabaseConfigured mengembalikan nilai boolean yang valid');
+const syncStatus = ArenaStore.getSyncStatus();
+assert(syncStatus.mode === 'local' || syncStatus.mode === 'supabase', `ArenaStore.getSyncStatus melaporkan mode valid (${syncStatus.mode})`);
+
+// 26.2 Validasi Kolom Sinkronisasi Terbaru di supabase/schema.sql
+assert(schemaSql.includes('is_first_login BOOLEAN'), 'Tabel users di schema.sql memuat kolom is_first_login');
+assert(schemaSql.includes('password_changed_at TIMESTAMPTZ'), 'Tabel users di schema.sql memuat kolom password_changed_at');
+assert(schemaSql.includes('allowed_game_ids JSONB'), 'Tabel cohorts di schema.sql memuat kolom allowed_game_ids');
+
+// 26.3 Round-Trip Mapper Cohort
+const sampleCohort = {
+  id_cohort: 'c-algo-2025',
+  nama_kelas: 'Algoritma Lanjutan 2025',
+  kode_kelas: 'ALGO-25',
+  periode: 'Ganjil 2025',
+  deskripsi: 'Kelas praktikum dinamis',
+  is_active: true,
+  allowed_game_ids: ['G1', 'G2'],
+  created_at: '2025-09-01T00:00:00.000Z'
+};
+const dbCohort = toDbCohortRow(sampleCohort);
+const domainCohort = fromDbCohortRow(dbCohort);
+assert(dbCohort.allowed_game_ids.length === 2, 'toDbCohortRow mempertahankan array allowed_game_ids');
+assert(domainCohort.kode_kelas === 'ALGO-25', 'fromDbCohortRow memulihkan kode_kelas akurat');
+assert(domainCohort.allowed_game_ids.includes('G2'), 'fromDbCohortRow memulihkan allowed_game_ids akurat');
+
+// 26.4 Round-Trip Mapper User & PostgreSQL FK Null Sanitization
+const sampleUser = {
+  nim: '2599001',
+  password: undefined, // simulasi payload tanpa password (sanitized client)
+  nama_lengkap: 'Raka Pratama',
+  codename: 'Raka_CP',
+  avatar: 'RP',
+  role: 'PESERTA',
+  prodi: 'Teknik Informatika',
+  angkatan: 2025,
+  kelas_reguler: 'TI A 25',
+  klub_hari: 'ALL',
+  id_cohort: '', // empty string harus jadi null di Postgres!
+  periode: 'Ganjil 2025',
+  total_xp: 450,
+  level: 2,
+  tier_badge: 'O(N) Sprinter',
+  milestones_json: ['FIRST_BLOOD'],
+  id_tim: '', // empty string harus jadi null di Postgres!
+  is_first_login: false,
+  password_changed_at: '2025-09-10T08:00:00.000Z'
+};
+const dbUser = toDbUserRow(sampleUser, 'ExistingSecret#99');
+assert(dbUser.id_cohort === null, 'toDbUserRow mengubah id_cohort string kosong menjadi NULL (FK Safe)');
+assert(dbUser.id_tim === null, 'toDbUserRow mengubah id_tim string kosong menjadi NULL (FK Safe)');
+assert(dbUser.password === 'ExistingSecret#99', 'toDbUserRow mempertahankan password DB eksisting saat payload client tidak menyertakan password');
+assert(dbUser.is_first_login === false, 'toDbUserRow memetakan is_first_login === false dengan akurat');
+
+const domainUser = fromDbUserRow(dbUser);
+assert(domainUser.id_tim === '', 'fromDbUserRow menormalkan id_tim NULL kembali ke string kosong untuk UI');
+assert(domainUser.is_first_login === false, 'fromDbUserRow mempertahankan status is_first_login === false');
+
+// 26.5 Round-Trip Mapper Team, Game, & Submission
+const dbTeam = toDbTeamRow({
+  id_tim: 'TIM-01',
+  nama_tim: 'Squad Alpha',
+  klub_hari: 'KAMIS',
+  id_cohort: '',
+  kode_gabung: 'ALPH01',
+  leader_nim: '2599001',
+  daftar_nim_json: ['2599001'],
+  daftar_nama_json: ['Raka Pratama'],
+  total_skor_tim: 450
+});
+assert(dbTeam.id_cohort === null, 'toDbTeamRow mengubah id_cohort kosong menjadi NULL');
+assert(fromDbTeamRow(dbTeam).kode_gabung === 'ALPH01', 'fromDbTeamRow memulihkan kode_gabung akurat');
+
+const dbGame = toDbGameRow({
+  id_game: 'G_SYNC_1',
+  ref_pertemuan: 'Pertemuan 2',
+  judul_game: 'Uji Sync Supabase',
+  kategori_materi: 'Graph',
+  kesulitan: 'Medium',
+  mode_game: 'SOLO',
+  status_kamis: 'OPEN',
+  status_jumat: 'UPCOMING',
+  cohort_statuses: { 'c-algo-2025': 'OPEN' },
+  durasi_total_menit: 20,
+  durasi_per_soal_detik: 60,
+  min_nilai_lulus: 75
+});
+assert(dbGame.cohort_statuses['c-algo-2025'] === 'OPEN', 'toDbGameRow mempertahankan cohort_statuses JSONB');
+assert(fromDbGameRow(dbGame).cohort_statuses['c-algo-2025'] === 'OPEN', 'fromDbGameRow memulihkan cohort_statuses akurat');
+
+const dbSub = toDbSubmissionRow({
+  id_submission: 'SUB-SYNC-1',
+  timestamp_mulai: '2025-09-10T09:00:00.000Z',
+  timestamp_update: '2025-09-10T09:10:00.000Z',
+  nim: '2599001',
+  codename: 'Raka_CP',
+  klub_hari: 'ALL',
+  id_game: 'G_SYNC_1',
+  mode_game: 'SOLO',
+  id_tim: '',
+  skor_xp: 120,
+  nilai_akademik: 95,
+  jumlah_benar: 2,
+  total_soal: 2,
+  status_lulus: 'LULUS',
+  streak_saat_ini: 2,
+  tab_switch_count: 1,
+  tab_switch_log: [{ timestamp: '2025-09-10T09:05:00.000Z', penalty_deducted: 5 }],
+  shuffled_question_ids: ['Q2', 'Q1'],
+  status_sesi: 'DONE',
+  detail_jawaban_json: []
+});
+assert(dbSub.id_tim === null, 'toDbSubmissionRow mengubah id_tim kosong menjadi NULL');
+assert(dbSub.tab_switch_log.length === 1, 'toDbSubmissionRow mempertahankan tab_switch_log JSONB');
+assert(dbSub.shuffled_question_ids[0] === 'Q2', 'toDbSubmissionRow mempertahankan shuffled_question_ids JSONB');
+const domainSub = fromDbSubmissionRow(dbSub);
+assert(domainSub.tab_switch_log?.length === 1, 'fromDbSubmissionRow memulihkan tab_switch_log akurat');
+
+// 26.6 Sanitasi Payload Sync Mahasiswa (Zero Password & Zero Answer Leakage)
+const sanitizedForStudent = sanitizeDatasetForStudent(
+  {
+    cohorts: [sampleCohort],
+    teams: [],
+    users: [
+      { ...domainUser, password: 'SecretPassword123' },
+      { ...domainUser, nim: '2599002', password: 'OtherStudentSecret' }
+    ],
+    games: [],
+    questions: [
+      {
+        id_soal: 'Q_DONE',
+        id_game: 'G_DONE',
+        judul: 'Soal Selesai',
+        narasi_soal: 'Narasi',
+        kunci_jawaban: 'A',
+        editorial: 'Pembahasan A',
+        poin_dasar: 50
+      },
+      {
+        id_soal: 'Q_ACTIVE',
+        id_game: 'G_ACTIVE',
+        judul: 'Soal Aktif',
+        narasi_soal: 'Narasi',
+        kunci_jawaban: 'B',
+        editorial: 'Pembahasan B',
+        poin_dasar: 50
+      }
+    ],
+    submissions: [
+      { ...domainSub, nim: '2599001', id_game: 'G_DONE', status_sesi: 'DONE' },
+      { ...domainSub, nim: '2599001', id_game: 'G_ACTIVE', status_sesi: 'ACTIVE' }
+    ]
+  },
+  '2599001'
+);
+
+assert(sanitizedForStudent.users.every((u) => u.password === undefined), 'Sync Payload Mahasiswa: Seluruh password user di-strip (Zero Password Exposure)');
+const qDoneSanitized = sanitizedForStudent.questions.find((q) => q.id_soal === 'Q_DONE');
+const qActiveSanitized = sanitizedForStudent.questions.find((q) => q.id_soal === 'Q_ACTIVE');
+assert(qDoneSanitized?.kunci_jawaban === 'A' && qDoneSanitized?.editorial === 'Pembahasan A', 'Sync Payload Mahasiswa: Kunci jawaban & editorial tersedia untuk game DONE');
+assert(qActiveSanitized?.kunci_jawaban === undefined && qActiveSanitized?.editorial === undefined, 'Sync Payload Mahasiswa: Kunci jawaban & editorial ter-strip untuk game ACTIVE (Zero Leakage)');
+
+// 26.7 Verifikasi Keberadaan Endpoint Live Sync
+assert(fs.existsSync(path.resolve('src/app/api/arena/sync/route.ts')), 'Endpoint src/app/api/arena/sync/route.ts tersedia');
+assert(fs.existsSync(path.resolve('src/lib/supabase/admin.ts')), 'Helper src/lib/supabase/admin.ts tersedia');
+assert(fs.existsSync(path.resolve('src/lib/supabase/repository.ts')), 'Repository src/lib/supabase/repository.ts tersedia');
+
+// ========================================================
+// TEST GROUP 27: Security Auth Hardening (scrypt Hashing, Signed HttpOnly Cookie & Server RBAC)
+// ========================================================
+console.log('\n--- [TEST GROUP 27: Security Auth Hardening (scrypt Hashing, Signed HttpOnly Cookie & Server RBAC)] ---');
+
+// 27.1 Salted scrypt Password Hashing
+const hashA = hashPassword('time2026CP');
+const hashB = hashPassword('time2026CP');
+assert(isPasswordHashed(hashA), 'hashPassword menghasilkan format scrypt$<salt>$<key> yang valid');
+assert(hashA !== 'time2026CP', 'Hash kata sandi tidak pernah identik dengan plain-text');
+assert(hashA !== hashB, 'Dua hash untuk input identik berbeda karena random per-user salt (Anti-Rainbow-Table)');
+
+// 27.2 Verifikasi Hash & Lazy Migration Legacy Plain-Text
+const validHashCheck = verifyPassword('time2026CP', hashA);
+assert(validHashCheck.valid === true && validHashCheck.needsRehash === false, 'verifyPassword menerima kata sandi cocok terhadap hash scrypt (needsRehash: false)');
+
+const invalidHashCheck = verifyPassword('salahPassword', hashA);
+assert(invalidHashCheck.valid === false, 'verifyPassword menolak kata sandi yang salah');
+
+const legacyPlainCheck = verifyPassword('time2026CP', 'time2026CP');
+assert(legacyPlainCheck.valid === true && legacyPlainCheck.needsRehash === true, 'verifyPassword mendukung lazy migration untuk password legacy plain-text (needsRehash: true)');
+
+// 27.3 Auto-Hashing pada toDbUserRow
+const hashedDbUserRow = toDbUserRow({ ...sampleUser, password: 'MyPlainPassword#1' });
+assert(isPasswordHashed(hashedDbUserRow.password), 'toDbUserRow otomatis mengenkripsi password plain-text baru ke hash scrypt');
+assert(verifyPassword('MyPlainPassword#1', hashedDbUserRow.password).valid === true, 'Password ter-hash pada toDbUserRow dapat diverifikasi dengan akurat');
+
+// 27.4 Signed Session Token (HMAC-SHA256) & Anti-Tampering
+const adminToken = await signSessionToken({ nim: 'ADMIN', role: 'ADMIN', codename: 'Grandmaster_Tarq' });
+const verifiedAdmin = await verifySessionToken(adminToken);
+assert(verifiedAdmin !== null, 'Token sesi ADMIN berhasil diverifikasi');
+assert(verifiedAdmin?.nim === 'ADMIN' && verifiedAdmin?.role === 'ADMIN', 'Payload sesi ADMIN (nim & role) utuh dan akurat');
+
+const studentToken = await signSessionToken({ nim: '2599001', role: 'PESERTA', codename: 'Raka_CP' });
+const verifiedStudent = await verifySessionToken(studentToken);
+assert(verifiedStudent?.nim === '2599001' && verifiedStudent?.role === 'PESERTA', 'Payload sesi PESERTA utuh dan akurat');
+
+// Simulasi manipulasi payload token (mengubah PESERTA -> ADMIN tanpa secret key)
+const [rawPayloadB64, rawSigB64] = studentToken.split('.');
+const fakePayloadObj = { nim: '2599001', role: 'ADMIN', codename: 'Hacker', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 };
+const fakePayloadB64 = Buffer.from(JSON.stringify(fakePayloadObj)).toString('base64url');
+const tamperedToken = `${fakePayloadB64}.${rawSigB64}`;
+const tamperedResult = await verifySessionToken(tamperedToken);
+assert(tamperedResult === null, 'Anti-Tampering: Token dengan payload termanipulasi (role spoofing) otomatis ditolak (null)');
+
+// Simulasi token kedaluwarsa
+const expiredToken = await signSessionToken({ nim: '2599001', role: 'PESERTA', codename: 'Raka_CP', ttlSeconds: -10 });
+const expiredResult = await verifySessionToken(expiredToken);
+assert(expiredResult === null, 'Token sesi kedaluwarsa otomatis ditolak (null)');
+
+// 27.5 Konfigurasi Cookie HttpOnly & Keberadaan Middleware Server RBAC
+const cookieOpts = getSessionCookieOptions();
+assert(SESSION_COOKIE_NAME === 'cp_arena_session', 'Nama cookie sesi resmi adalah cp_arena_session');
+assert(cookieOpts.httpOnly === true, 'Cookie sesi mengaktifkan flag httpOnly: true (Anti-XSS Theft)');
+assert(cookieOpts.sameSite === 'lax', 'Cookie sesi mengaktifkan SameSite: lax (Anti-CSRF)');
+
+assert(fs.existsSync(path.resolve('src/middleware.ts')), 'Server-side RBAC Middleware src/middleware.ts tersedia');
+assert(fs.existsSync(path.resolve('src/app/api/auth/logout/route.ts')), 'Endpoint src/app/api/auth/logout/route.ts tersedia');
+assert(fs.existsSync(path.resolve('src/app/api/auth/session/route.ts')), 'Endpoint src/app/api/auth/session/route.ts tersedia');
+
+const syncRouteCode = fs.readFileSync(path.resolve('src/app/api/arena/sync/route.ts'), 'utf8');
+assert(syncRouteCode.includes('verifySessionToken'), '/api/arena/sync memverifikasi token sesi kriptografis (Anti-Spoofing)');
+assert(!syncRouteCode.includes("searchParams.get('role')"), '/api/arena/sync tidak lagi membaca parameter ?role= yang tidak tepercaya dari URL');
+
+// ========================================================
+// TEST GROUP 28: Bulk Student Import (CSV/Excel) & Admin Password Reset
+// ========================================================
+console.log('\n--- [TEST GROUP 28: Bulk Student Import (CSV/Excel) & Admin Password Reset] ---');
+
+// 28.1 Deteksi Delimiter & Parsing CSV (Semicolon Excel ID + UTF-8 BOM + Quoted Field)
+assert(detectCsvDelimiter('NIM;Nama_Lengkap;Prodi') === ';', 'Deteksi otomatis delimiter titik koma (;) untuk Excel Indonesia');
+assert(detectCsvDelimiter('NIM,Nama_Lengkap,Prodi') === ',', 'Deteksi otomatis delimiter koma (,) untuk CSV standar');
+
+const sampleCsvText = [
+  '\uFEFFNIM;Nama_Lengkap;Prodi;Angkatan;Kelas_Reguler;Codename',
+  '2605001;Nadia Kusuma;Sistem Informasi;2025;SI A 25;Nadia_DP',
+  '2605002;"Budi, S.Kom Candidate";Teknik Informatika;2025;TI B 25;',
+  '2605001;Duplikat Dalam File;Sistem Informasi;2025;SI A 25;',
+  ';Tanpa NIM;Sistem Informasi;2025;SI A 25;',
+  '2605003;;Sistem Informasi;2025;SI A 25;',
+  '26019999;Sudah Terdaftar Sebelumnya;Sistem Informasi;2025;SI C 25;'
+].join('\n');
+
+const parsedCsvRecords = parseRawCsvText(sampleCsvText);
+assert(parsedCsvRecords.length === 6, `parseRawCsvText membaca tepat 6 baris data (Aktual: ${parsedCsvRecords.length})`);
+assert(parsedCsvRecords[0].nim === '2605001', 'Parsing baris 1 mempertahankan NIM tanpa BOM');
+assert(parsedCsvRecords[1].nama_lengkap === 'Budi, S.Kom Candidate', 'Parsing RFC 4180 mempertahankan field berkoma dalam tanda kutip');
+
+// 28.2 Validasi Duplikat (Dalam File & Eksisting DB) serta Baris Invalid
+const importValidation = validateImportedStudentRows(parsedCsvRecords, ArenaStore.getUsers());
+assert(importValidation.totalRows === 6, 'Total baris tervalidasi adalah 6');
+assert(importValidation.validRows.length === 2, `Tepat 2 baris berstatus VALID (Aktual: ${importValidation.validRows.length})`);
+assert(importValidation.duplicateRows.length === 2, `Tepat 2 baris berstatus DUPLIKAT/TERDAFTAR (Aktual: ${importValidation.duplicateRows.length})`);
+assert(importValidation.invalidRows.length === 2, `Tepat 2 baris berstatus INVALID (Aktual: ${importValidation.invalidRows.length})`);
+assert(importValidation.rows[2].status === 'DUPLICATE_IN_FILE', 'Baris duplikat internal ditandai DUPLICATE_IN_FILE');
+assert(importValidation.rows[5].status === 'ALREADY_EXISTS', 'Baris NIM eksisting ditandai ALREADY_EXISTS');
+
+// 28.3 Build DTO & Eksekusi Atomik ArenaStore.bulkCreateUsers
+const bulkDtos = buildBulkCreateUserDTOs(importValidation.validRows, {
+  id_cohort: 'c-bulk-test',
+  kode_kelas: 'BULK-25',
+  periode: 'Ganjil 2025'
+});
+assert(bulkDtos.length === 2, 'buildBulkCreateUserDTOs menghasilkan 2 DTO siap impor');
+assert(bulkDtos[0].id_cohort === 'c-bulk-test', 'DTO mengikat id_cohort tujuan secara dinamis');
+
+const bulkInsertRes = ArenaStore.bulkCreateUsers(bulkDtos);
+assert(bulkInsertRes.success === true, 'ArenaStore.bulkCreateUsers berhasil');
+assert(bulkInsertRes.createdCount === 2, `Tepat 2 mahasiswa baru tercipta (Aktual: ${bulkInsertRes.createdCount})`);
+assert(bulkInsertRes.createdUsers[0].is_first_login === true, 'Mahasiswa hasil bulk import wajib onboarding (is_first_login === true)');
+assert(bulkInsertRes.createdUsers[0].avatar === 'NK', 'Monogram inisial Nadia Kusuma terhitung otomatis (NK)');
+
+// Uji idempotensi: impor ulang batch yang sama harus dilewati seluruhnya
+const reImportRes = ArenaStore.bulkCreateUsers(bulkDtos);
+assert(reImportRes.success === false && reImportRes.createdCount === 0, 'Impor ulang NIM yang sama ditolak otomatis (Zero Duplicate)');
+
+// 28.4 Admin Reset Kata Sandi Mahasiswa Kembali ke NIM
+const changeBeforeReset = ArenaStore.changePassword('2605001', '2605001', 'PasswordRahasia#88');
+assert(changeBeforeReset.success === true && changeBeforeReset.user?.is_first_login === false, 'Mahasiswa 2605001 berhasil mengganti sandi terlebih dahulu');
+
+const adminResetRes = ArenaStore.adminResetPassword('2605001');
+assert(adminResetRes.success === true, 'Admin berhasil mereset kata sandi mahasiswa 2605001 ke NIM');
+assert(adminResetRes.user?.password === '2605001', 'Password mahasiswa kembali ke NIM setelah direset Admin');
+assert(adminResetRes.user?.is_first_login === true, 'is_first_login direset kembali ke true');
+
+const loginAfterAdminReset = ArenaStore.login('2605001', '2605001');
+assert(loginAfterAdminReset.success === true, 'Mahasiswa bisa login kembali menggunakan NIM pasca-reset Admin');
+assert(loginAfterAdminReset.requiresOnboarding === true, 'Login pasca-reset Admin otomatis memicu wajib onboarding ganti sandi baru');
+
+// 28.5 Template CSV Resmi & Keberadaan Komponen / Endpoint
+const csvTemplate = generateStudentImportTemplateCsv();
+assert(csvTemplate.startsWith('\uFEFFNIM;Nama_Lengkap;'), 'Template CSV resmi memuat UTF-8 BOM dan header standar STMIK TIME');
+assert(fs.existsSync(path.resolve('src/components/admin/modals/BulkImportStudentsModal.tsx')), 'Komponen modal BulkImportStudentsModal.tsx tersedia');
+const passRouteCode = fs.readFileSync(path.resolve('src/app/api/auth/password/route.ts'), 'utf8');
+assert(passRouteCode.includes("action === 'admin-reset'") && passRouteCode.includes("session.role !== 'ADMIN'"), '/api/auth/password mendukung admin-reset khusus otoritas ADMIN');
 
 console.log('\n========================================================');
 console.log(`📊 Hasil Verifikasi: ${passedTests}/${totalTests} Uji Lulus (${Math.round((passedTests/totalTests)*100)}%)`);

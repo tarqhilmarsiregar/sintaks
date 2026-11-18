@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { User } from '@/types/arena';
+import { ArenaStore } from '@/lib/arena-store';
 import ModalPortal from '@/components/common/ModalPortal';
 import UserAvatar from '@/components/arena/UserAvatar';
 import {
@@ -67,36 +68,61 @@ export default function FirstLoginOnboardingModal({
     setIsSubmitting(true);
 
     try {
-      // 1. Call server API
-      const res = await fetch('/api/auth/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'onboarding',
+      // 1. Call server API (Supabase live persistence)
+      let syncedViaSupabase = false;
+      try {
+        const res = await fetch('/api/auth/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'onboarding',
+            nim: currentUser.nim,
+            newPassword: newPassword.trim(),
+            codename: codename.trim(),
+            avatar: currentUser.avatar,
+          }),
+        });
+
+        const data = await res.json();
+        if (data?.mode === 'supabase') {
+          if (!res.ok || !data.success) {
+            setErrorMessage(data.error || 'Gagal menyimpan pembaruan akun ke database.');
+            setIsSubmitting(false);
+            return;
+          }
+          syncedViaSupabase = true;
+          const updatedUser: User = {
+            ...currentUser,
+            ...(data.user || {}),
+            codename: codename.trim(),
+            is_first_login: false,
+            password_changed_at: data.user?.password_changed_at || new Date().toISOString(),
+          };
+          ArenaStore.setCurrentUser(updatedUser);
+          onComplete(updatedUser);
+          return;
+        }
+      } catch {
+        // Fallback ke local store
+      }
+
+      // 2. Local ArenaStore persistence (mode lokal / offline)
+      if (!syncedViaSupabase) {
+        const localRes = ArenaStore.completeOnboarding({
           nim: currentUser.nim,
           newPassword: newPassword.trim(),
           codename: codename.trim(),
           avatar: currentUser.avatar,
-        }),
-      });
+        });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setErrorMessage(data.error || 'Gagal menyimpan pembaruan akun.');
-        setIsSubmitting(false);
-        return;
+        if (!localRes.success || !localRes.user) {
+          setErrorMessage(localRes.message || 'Gagal menyimpan pembaruan akun.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        onComplete(localRes.user);
       }
-
-      // 2. Callback sukses
-      const updatedUser: User = {
-        ...currentUser,
-        password: newPassword.trim(),
-        codename: codename.trim(),
-        is_first_login: false,
-        password_changed_at: new Date().toISOString(),
-      };
-
-      onComplete(updatedUser);
     } catch (err: any) {
       setErrorMessage(err?.message || 'Terjadi gangguan jaringan saat memperbarui akun.');
       setIsSubmitting(false);

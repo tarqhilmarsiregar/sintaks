@@ -32,15 +32,28 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Jika sudah ada sesi aktif, langsung arahkan ke portal masing-masing
-    const user = ArenaStore.getCurrentUser();
-    if (user) {
-      if (user.role === 'ADMIN') {
-        router.replace('/admin');
-      } else {
-        router.replace('/mahasiswa');
+    // Jika diarahkan dari Server Middleware (sesi HttpOnly belum ada / kedaluwarsa),
+    // bersihkan cache sesi localStorage agar tidak terjadi redirect loop.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reason') === 'auth_required') {
+      ArenaStore.setCurrentUser(null);
+    } else {
+      // Jika sudah ada sesi lokal aktif, pastikan sesi HttpOnly server juga valid sebelum redirect
+      const user = ArenaStore.getCurrentUser();
+      if (user) {
+        fetch('/api/auth/session', { cache: 'no-store', credentials: 'same-origin' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data?.authenticated && data?.session) {
+              router.replace(data.session.role === 'ADMIN' ? '/admin' : '/mahasiswa');
+            } else {
+              ArenaStore.setCurrentUser(null);
+            }
+          })
+          .catch(() => {
+            router.replace(user.role === 'ADMIN' ? '/admin' : '/mahasiswa');
+          });
       }
-      return;
     }
 
     const siteKey =
@@ -139,6 +152,37 @@ export default function LoginPage() {
       console.warn('Peringatan verifikasi server reCAPTCHA:', err);
     }
 
+    // 1. Prioritaskan autentikasi live ke Supabase PostgreSQL (/api/auth/login)
+    try {
+      const loginRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nim, password }),
+      });
+
+      const loginData = await loginRes.json();
+
+      if (loginData?.mode === 'supabase') {
+        if (loginRes.ok && loginData.success && loginData.user) {
+          ArenaStore.setCurrentUser(loginData.user);
+          await ArenaStore.hydrateFromServer({
+            role: loginData.user.role,
+            nim: loginData.user.nim,
+          });
+          setLoading(false);
+          router.push(loginData.user.role === 'ADMIN' ? '/admin' : '/mahasiswa');
+          return;
+        } else {
+          setLoading(false);
+          setError(loginData.error || 'Login gagal. Periksa kembali NIM dan Kata Sandi Anda.');
+          return;
+        }
+      }
+    } catch {
+      // Lanjut ke fallback lokal bila offline
+    }
+
+    // 2. Fallback penyimpanan lokal (saat mode dev offline / Supabase belum dikonfigurasi)
     const res = ArenaStore.login(nim, password);
     setLoading(false);
 

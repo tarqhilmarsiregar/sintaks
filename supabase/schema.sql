@@ -25,6 +25,7 @@ CREATE TABLE public.cohorts (
   periode VARCHAR(30) NOT NULL, -- Format: <Ganjil/Genap> <Tahun>, misal: 'Ganjil 2025'
   deskripsi TEXT,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  allowed_game_ids JSONB NOT NULL DEFAULT '[]'::JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_periode_format CHECK (periode ~ '^(Ganjil|Genap) [0-9]{4}$')
 );
@@ -73,6 +74,8 @@ CREATE TABLE public.users (
   tier_badge VARCHAR(80) NOT NULL DEFAULT 'Logic Novice',
   milestones_json JSONB NOT NULL DEFAULT '[]'::JSONB,
   id_tim VARCHAR(50) REFERENCES public.teams(id_tim) ON DELETE SET NULL,
+  is_first_login BOOLEAN NOT NULL DEFAULT TRUE,
+  password_changed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -207,13 +210,20 @@ CREATE POLICY "Allow public read access to questions" ON public.questions FOR SE
 CREATE POLICY "Allow public read access to submissions" ON public.submissions FOR SELECT USING (true);
 
 -- Service Role Full Read/Write Policies (Next.js Server API Routes & Admin Operations)
-CREATE POLICY "Allow service all cohorts" ON public.cohorts FOR ALL USING (true);
-CREATE POLICY "Allow service all teams" ON public.teams FOR ALL USING (true);
-CREATE POLICY "Allow service all users" ON public.users FOR ALL USING (true);
-CREATE POLICY "Allow service all games" ON public.games FOR ALL USING (true);
-CREATE POLICY "Allow service all cohort_game_access" ON public.cohort_game_access FOR ALL USING (true);
-CREATE POLICY "Allow service all questions" ON public.questions FOR ALL USING (true);
-CREATE POLICY "Allow service all submissions" ON public.submissions FOR ALL USING (true);
+CREATE POLICY "Allow service all cohorts" ON public.cohorts FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service all teams" ON public.teams FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service all users" ON public.users FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service all games" ON public.games FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service all cohort_game_access" ON public.cohort_game_access FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service all questions" ON public.questions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service all submissions" ON public.submissions FOR ALL USING (true) WITH CHECK (true);
+
+-- Explicit PostgreSQL Schema & Table Grants (Wajib untuk Supabase Postgres 15+ & Secret/Publishable Keys)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT SELECT ON public.student_questions_view TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
 
 -- ==============================================================================
 -- 11. PRODUCTION SEED: ROOT ADMIN CREDENTIALS & STARTER COHORTS (CLEAN PRODUCTION)
@@ -230,10 +240,10 @@ VALUES
 ON CONFLICT (id_cohort) DO NOTHING;
 
 -- B. Root Credentials Dosen Pembina & Admin (Tarq Hilmar Siregar, S.Kom)
-INSERT INTO public.users (nim, password, nama_lengkap, codename, avatar, role, prodi, angkatan, kelas_reguler, klub_hari, total_xp, level, tier_badge, milestones_json, id_tim)
+INSERT INTO public.users (nim, password, nama_lengkap, codename, avatar, role, prodi, angkatan, kelas_reguler, klub_hari, total_xp, level, tier_badge, milestones_json, id_tim, is_first_login)
 VALUES 
-('ADMIN', 'ADMIN', 'Tarq Hilmar Siregar, S.Kom', 'Grandmaster_Tarq', 'TH', 'ADMIN', 'Teknik Informatika', 2020, 'DOSEN', 'ALL', 9999, 40, 'Grandmaster Time', '["FIRST_BLOOD", "PERFECT_100", "SPEED_DEMON", "STREAK_3X"]'::jsonb, NULL),
-('DOSEN001', 'dosen123', 'Tarq Hilmar Siregar, S.Kom', 'Grandmaster_Tarq', 'TH', 'ADMIN', 'Teknik Informatika', 2020, 'DOSEN', 'ALL', 9999, 40, 'Grandmaster Time', '["FIRST_BLOOD", "PERFECT_100", "SPEED_DEMON", "STREAK_3X"]'::jsonb, NULL)
+('ADMIN', 'ADMIN', 'Tarq Hilmar Siregar, S.Kom', 'Grandmaster_Tarq', 'TH', 'ADMIN', 'Teknik Informatika', 2020, 'DOSEN', 'ALL', 9999, 40, 'Grandmaster Time', '["FIRST_BLOOD", "PERFECT_100", "SPEED_DEMON", "STREAK_3X"]'::jsonb, NULL, FALSE),
+('DOSEN001', 'dosen123', 'Tarq Hilmar Siregar, S.Kom', 'Grandmaster_Tarq', 'TH', 'ADMIN', 'Teknik Informatika', 2020, 'DOSEN', 'ALL', 9999, 40, 'Grandmaster Time', '["FIRST_BLOOD", "PERFECT_100", "SPEED_DEMON", "STREAK_3X"]'::jsonb, NULL, FALSE)
 ON CONFLICT (nim) DO NOTHING;
 
 -- C. Paket Game Default Pertemuan 1 (G1 - G7)

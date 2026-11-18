@@ -57,9 +57,116 @@ const STORAGE_KEYS = {
 
 export class ArenaStore {
   private static memoryStore: Record<string, string> = {};
+  private static isHydrating = false;
+  private static dbMode: 'supabase' | 'local' = 'local';
+  private static supabaseUnconfigured = false;
+  private static lastSyncedAt: string | null = null;
 
   private static isBrowser(): boolean {
     return typeof window !== 'undefined';
+  }
+
+  public static getSyncStatus(): { mode: 'supabase' | 'local'; lastSyncedAt: string | null } {
+    return {
+      mode: this.dbMode,
+      lastSyncedAt: this.lastSyncedAt,
+    };
+  }
+
+  /**
+   * Sinkronisasi write-through non-blocking ke endpoint Supabase (/api/arena/sync).
+   * Otomatis nonaktif saat berjalan di unit test (Node), saat hidrasi, atau jika Supabase belum dikonfigurasi.
+   */
+  private static pushEntityToServer(entity: string, items?: any): void {
+    if (!this.isBrowser() || this.isHydrating || this.supabaseUnconfigured) return;
+    if (typeof fetch !== 'function') return;
+
+    fetch('/api/arena/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity, items }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.configured === false) {
+          this.supabaseUnconfigured = true;
+          this.dbMode = 'local';
+        } else if (data?.mode === 'supabase' && data?.synced) {
+          this.dbMode = 'supabase';
+          this.lastSyncedAt = data.syncedAt || new Date().toISOString();
+        }
+      })
+      .catch(() => {
+        // Fallback aman: data tetap tersimpan di localStorage jika jaringan terputus
+      });
+  }
+
+  /**
+   * Menarik state terbaru dari Supabase PostgreSQL ke cache lokal (multi-device live sync).
+   */
+  public static async hydrateFromServer(options?: {
+    role?: UserRole;
+    nim?: string;
+  }): Promise<{ mode: 'supabase' | 'local'; synced: boolean }> {
+    if (!this.isBrowser() || typeof fetch !== 'function') {
+      return { mode: 'local', synced: false };
+    }
+
+    try {
+      const current = this.getCurrentUser();
+
+      // Server membaca role & nim secara kriptografis dari HttpOnly cookie cp_arena_session
+      const res = await fetch('/api/arena/sync', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+
+      if (!res.ok) {
+        return { mode: 'local', synced: false };
+      }
+
+      const payload = await res.json();
+      if (payload?.configured === false || payload?.mode !== 'supabase' || !payload?.data) {
+        this.supabaseUnconfigured = true;
+        this.dbMode = 'local';
+        return { mode: 'local', synced: false };
+      }
+
+      this.isHydrating = true;
+      try {
+        const { cohorts, teams, users, games, questions, submissions } = payload.data;
+        if (Array.isArray(cohorts)) this.setItem(STORAGE_KEYS.COHORTS, JSON.stringify(cohorts));
+        if (Array.isArray(teams)) this.setItem(STORAGE_KEYS.TEAMS, JSON.stringify(teams));
+        if (Array.isArray(users)) {
+          this.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+          this.setItem(STORAGE_KEYS.MOCK_STUDENTS_PURGED, 'true');
+        }
+        if (Array.isArray(games)) this.setItem(STORAGE_KEYS.GAMES, JSON.stringify(games));
+        if (Array.isArray(questions)) this.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(questions));
+        if (Array.isArray(submissions)) this.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
+
+        // Perbarui sesi currentUser bila profil di server berubah (misal XP naik atau masuk tim)
+        if (current && Array.isArray(users)) {
+          const freshUser = users.find((u: User) => u.nim.toUpperCase() === current.nim.toUpperCase());
+          if (freshUser) {
+            this.setCurrentUser({
+              ...freshUser,
+              password: freshUser.password ?? current.password,
+            });
+          }
+        }
+
+        this.supabaseUnconfigured = false;
+        this.dbMode = 'supabase';
+        this.lastSyncedAt = payload.syncedAt || new Date().toISOString();
+        return { mode: 'supabase', synced: true };
+      } finally {
+        this.isHydrating = false;
+      }
+    } catch {
+      return { mode: 'local', synced: false };
+    }
   }
 
   private static getItem(key: string): string | null {
@@ -128,6 +235,7 @@ export class ArenaStore {
 
   public static saveUsers(users: User[]): void {
     this.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    this.pushEntityToServer('users', users);
   }
 
   // --- COHORT & CLASSROOM CRUD ---
@@ -165,6 +273,7 @@ export class ArenaStore {
 
   public static saveCohorts(cohorts: Cohort[]): void {
     this.setItem(STORAGE_KEYS.COHORTS, JSON.stringify(cohorts));
+    this.pushEntityToServer('cohorts', cohorts);
   }
 
   public static getCohortById(id: string): Cohort | undefined {
@@ -295,6 +404,7 @@ export class ArenaStore {
 
   public static saveGames(games: Game[]): void {
     this.setItem(STORAGE_KEYS.GAMES, JSON.stringify(games));
+    this.pushEntityToServer('games', games);
   }
 
   public static getQuestions(): Question[] {
@@ -312,6 +422,7 @@ export class ArenaStore {
 
   public static saveQuestions(questions: Question[]): void {
     this.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(questions));
+    this.pushEntityToServer('questions', questions);
   }
 
   // --- QUESTION CRUD (KUIS PILIHAN GANDA) ---
@@ -648,6 +759,7 @@ export class ArenaStore {
 
   public static saveSubmissions(submissions: Submission[]): void {
     this.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
+    this.pushEntityToServer('submissions', submissions);
   }
 
   /**
@@ -746,6 +858,7 @@ export class ArenaStore {
 
   public static saveTeams(teams: Team[]): void {
     this.setItem(STORAGE_KEYS.TEAMS, JSON.stringify(teams));
+    this.pushEntityToServer('teams', teams);
   }
 
   public static getFirstBloods(): FirstBloodAnnouncement[] {
@@ -817,6 +930,9 @@ export class ArenaStore {
 
   public static logout(): void {
     this.setCurrentUser(null);
+    if (this.isBrowser() && typeof fetch === 'function') {
+      fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+    }
   }
 
   // --- PASSWORD MANAGEMENT & ONBOARDING ---
@@ -1005,6 +1121,106 @@ export class ArenaStore {
     this.saveUsers(users);
 
     return { success: true, message: `Akun ${cleanNama} (${cleanNim}) berhasil didaftarkan!`, user: newUser };
+  }
+
+  public static bulkCreateUsers(dtos: CreateUserDTO[]): {
+    success: boolean;
+    message: string;
+    createdCount: number;
+    skippedCount: number;
+    createdUsers: User[];
+  } {
+    const users = this.getUsers();
+    const existingNims = new Set(users.map((u) => u.nim.toUpperCase()));
+    const createdUsers: User[] = [];
+    let skippedCount = 0;
+
+    const getInitials = (nama: string) => {
+      const parts = nama.trim().split(/\s+/);
+      if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    };
+
+    for (const dto of dtos) {
+      const cleanNim = (dto.nim || '').trim().toUpperCase();
+      const cleanNama = (dto.nama_lengkap || '').trim();
+
+      if (!cleanNim || !cleanNama || existingNims.has(cleanNim)) {
+        skippedCount++;
+        continue;
+      }
+
+      const role: UserRole = dto.role || 'PESERTA';
+      const klubHari: KlubHari = role === 'ADMIN' ? 'ALL' : (dto.klub_hari || 'ALL');
+      const codename =
+        dto.codename?.trim() || `${cleanNama.split(/\s+/)[0]}_${cleanNim.slice(-4)}`;
+
+      const newUser: User = {
+        nim: cleanNim,
+        password: dto.password?.trim() || cleanNim,
+        nama_lengkap: cleanNama,
+        codename,
+        avatar: getInitials(cleanNama),
+        role,
+        prodi: dto.prodi?.trim() || 'Sistem Informasi',
+        angkatan: Number(dto.angkatan) || 2025,
+        kelas_reguler: dto.kelas_reguler?.trim() || 'REGULER',
+        klub_hari: klubHari,
+        id_cohort: dto.id_cohort,
+        periode: dto.periode || 'Ganjil 2025',
+        total_xp: 0,
+        level: 1,
+        tier_badge: 'Logic Novice',
+        milestones_json: [],
+        id_tim: '',
+        is_first_login: role === 'PESERTA',
+      };
+
+      users.push(newUser);
+      existingNims.add(cleanNim);
+      createdUsers.push(newUser);
+    }
+
+    if (createdUsers.length === 0) {
+      return {
+        success: false,
+        message: 'Tidak ada mahasiswa baru yang valid untuk diimpor (seluruh baris kosong atau NIM sudah terdaftar).',
+        createdCount: 0,
+        skippedCount,
+        createdUsers: [],
+      };
+    }
+
+    // 1x atomic write-through sync ke localStorage & Supabase PostgreSQL
+    this.saveUsers(users);
+
+    return {
+      success: true,
+      message: `Berhasil mengimpor ${createdUsers.length} akun mahasiswa baru${skippedCount > 0 ? ` (${skippedCount} baris dilewati)` : ''}.`,
+      createdCount: createdUsers.length,
+      skippedCount,
+      createdUsers,
+    };
+  }
+
+  public static adminResetPassword(nim: string): { success: boolean; message: string; user?: User } {
+    const users = this.getUsers();
+    const cleanNim = (nim || '').trim().toUpperCase();
+    const idx = users.findIndex((u) => u.nim.toUpperCase() === cleanNim);
+    if (idx === -1) {
+      return { success: false, message: `Akun dengan NIM ${cleanNim} tidak ditemukan.` };
+    }
+
+    users[idx].password = users[idx].nim;
+    users[idx].is_first_login = users[idx].role === 'PESERTA';
+    users[idx].password_changed_at = undefined;
+    this.saveUsers(users);
+
+    return {
+      success: true,
+      message: `Kata sandi ${users[idx].nama_lengkap} (${users[idx].nim}) berhasil direset kembali ke NIM.`,
+      user: users[idx],
+    };
   }
 
   public static deleteUser(nim: string): { success: boolean; message: string } {
@@ -2370,6 +2586,7 @@ export class ArenaStore {
     this.setItem(STORAGE_KEYS.MOCK_STUDENTS_PURGED, 'true');
     this.memoryStore = {};
     this.memoryStore[STORAGE_KEYS.MOCK_STUDENTS_PURGED] = 'true';
+    this.pushEntityToServer('reset-all');
   }
 }
 
